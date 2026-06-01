@@ -108,21 +108,21 @@ def _add_launch_fn(src: str, fn_body: str) -> str:
 
 VIEWER_LAUNCH = '''
 def launch() -> "QMainWindow | None":
-    """Called by the launcher. Returns the main window."""
+    """Called by the launcher. Returns the main viewer window."""
     from PySide6.QtWidgets import QApplication
     import sys
     app = QApplication.instance() or QApplication(sys.argv)
-    win = ShotViewerWindow()   # adjust class name to match the actual main window class
+    win = ShotViewerApp()
     return win
 '''
 
 ROTO_LAUNCH = '''
 def launch() -> "QMainWindow | None":
-    """Called by the launcher. Returns the roto_align main window."""
+    """Called by the launcher. Returns the roto align window."""
     from PySide6.QtWidgets import QApplication
     import sys
     app = QApplication.instance() or QApplication(sys.argv)
-    win = MainWindow()         # adjust class name to match the actual main window class
+    win = AlignWindow()
     return win
 '''
 
