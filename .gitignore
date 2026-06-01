@@ -1,0 +1,14 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+build/dist/
+build/work/
+dist/
+*.egg-info/
+.env.local
+.seed-viewer.env
+*.spec.bak
+.DS_Store
+Thumbs.db

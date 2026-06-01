@@ -1,0 +1,6 @@
+# Build dependencies — not needed to run the viewer
+pyinstaller>=6.3
+pyinstaller-hooks-contrib>=2024.1
+PySide6>=6.6,<7
+Pillow>=10.0
+numpy>=1.24

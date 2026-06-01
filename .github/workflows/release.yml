@@ -1,0 +1,153 @@
+name: Build & Release
+
+# Trigger on version tags: git tag v0.2.0 && git push --tags
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:    # allow manual trigger from GitHub Actions UI
+    inputs:
+      tag:
+        description: "Version tag (e.g. v0.1.0)"
+        required: false
+
+jobs:
+  # ── macOS build ─────────────────────────────────────────────────────────────
+  build-mac:
+    name: Build macOS
+    runs-on: macos-latest    # Apple Silicon (M-series)
+    steps:
+      - name: Checkout seed-viewer
+        uses: actions/checkout@v4
+
+      # Pull the private seed-film source files.
+      # Add a GitHub Secret named SEED_FILM_TOKEN (a PAT with repo read access).
+      - name: Checkout seed-film (source)
+        uses: actions/checkout@v4
+        with:
+          repository: seed-atara/seed-film
+          token: ${{ secrets.SEED_FILM_TOKEN }}
+          path: _seed_film
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements-build.txt
+
+      - name: Prepare source files from seed-film
+        run: |
+          python build/prepare_sources.py --source _seed_film
+
+      - name: Download FFmpeg (macOS)
+        run: |
+          python build/download_ffmpeg.py
+
+      - name: Build with PyInstaller
+        run: |
+          pyinstaller build/seed_viewer_mac.spec --distpath build/dist --workpath build/work --clean
+
+      - name: Create DMG
+        run: |
+          brew install create-dmg
+          create-dmg \
+            --volname "Seed Viewer" \
+            --window-pos 200 120 \
+            --window-size 600 400 \
+            --icon-size 100 \
+            --icon "SeedViewer.app" 150 190 \
+            --hide-extension "SeedViewer.app" \
+            --app-drop-link 450 190 \
+            "build/dist/SeedViewer-mac.dmg" \
+            "build/dist/SeedViewer/"
+
+      - name: Upload macOS artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SeedViewer-mac
+          path: build/dist/SeedViewer-mac.dmg
+
+  # ── Windows build ────────────────────────────────────────────────────────────
+  build-windows:
+    name: Build Windows
+    runs-on: windows-latest
+    steps:
+      - name: Checkout seed-viewer
+        uses: actions/checkout@v4
+
+      - name: Checkout seed-film (source)
+        uses: actions/checkout@v4
+        with:
+          repository: seed-atara/seed-film
+          token: ${{ secrets.SEED_FILM_TOKEN }}
+          path: _seed_film
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements-build.txt
+
+      - name: Prepare source files from seed-film
+        run: |
+          python build/prepare_sources.py --source _seed_film
+
+      - name: Download FFmpeg (Windows)
+        run: |
+          python build/download_ffmpeg.py
+
+      - name: Build with PyInstaller
+        run: |
+          pyinstaller build\seed_viewer_win.spec --distpath build\dist --workpath build\work --clean
+
+      - name: Zip Windows build
+        run: |
+          Compress-Archive -Path build\dist\SeedViewer -DestinationPath build\dist\SeedViewer-win.zip
+
+      - name: Upload Windows artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SeedViewer-win
+          path: build/dist/SeedViewer-win.zip
+
+  # ── Create GitHub Release ────────────────────────────────────────────────────
+  release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    needs: [build-mac, build-windows]
+    permissions:
+      contents: write
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "Seed Viewer ${{ github.ref_name }}"
+          body: |
+            ## Download
+
+            | Platform | File |
+            |----------|------|
+            | macOS (Apple Silicon + Intel) | `SeedViewer-mac.dmg` |
+            | Windows 11 | `SeedViewer-win.zip` |
+
+            ## Setup
+            See [README](https://github.com/${{ github.repository }}#readme) for installation instructions.
+
+            ## macOS first-launch
+            Right-click → Open, or: System Settings → Privacy & Security → Open Anyway.
+          files: |
+            artifacts/SeedViewer-mac/SeedViewer-mac.dmg
+            artifacts/SeedViewer-win/SeedViewer-win.zip
+          draft: false
+          prerelease: false
