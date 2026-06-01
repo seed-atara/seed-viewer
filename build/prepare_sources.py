@@ -60,6 +60,26 @@ def _patch_imports(src: str, is_roto: bool = False) -> str:
         "import seed_viewer.paths as pipeline_paths",
         src,
     )
+    # Patch DB_PATH so the bundled app reads shot_database.json from the drive,
+    # not from _REPO (which is the PyInstaller temp dir in a frozen build).
+    src = re.sub(
+        r"^DB_PATH\s*=\s*_REPO\s*/\s*[\"']shot_database\.json[\"']",
+        "from seed_viewer.paths import _find_db_path as _sv_find_db_path\n"
+        "DB_PATH = _sv_find_db_path() or (Path(__file__).parent / 'shot_database.json')",
+        src,
+        flags=re.MULTILINE,
+    )
+    # Patch load_db() to delegate to seed_viewer.paths so it always reads from the drive.
+    src = re.sub(
+        r"def load_db\(\) -> dict:\n"
+        r"    if DB_PATH\.exists\(\):\n"
+        r"        return json\.loads\(DB_PATH\.read_text\(encoding=[\"']utf-8[\"']\)\)\n"
+        r"    return \{\}",
+        "def load_db() -> dict:\n"
+        "    from seed_viewer.paths import _load_db as _sv_load_db\n"
+        "    return _sv_load_db()",
+        src,
+    )
     return src
 
 
