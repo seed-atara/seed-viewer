@@ -29,6 +29,9 @@ a = Analysis(
         "PySide6.QtMultimedia",
         "PySide6.QtMultimediaWidgets",
         "numpy",
+        # dynamically loaded via importlib.import_module() in main.py
+        "seed_viewer.viewer",
+        "seed_viewer.roto_align",
     ],
     hookspath=[str(REPO / "build" / "hooks")],
     hooksconfig={},

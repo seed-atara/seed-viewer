@@ -30,6 +30,9 @@ a = Analysis(
         "PySide6.QtMultimediaWidgets",
         "PIL._tkinter_finder",
         "numpy",
+        # dynamically loaded via importlib.import_module() in main.py
+        "seed_viewer.viewer",
+        "seed_viewer.roto_align",
     ],
     hookspath=[str(REPO / "build" / "hooks")],
     hooksconfig={},
