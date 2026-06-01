@@ -125,13 +125,22 @@ _FFMPEG  = _resolve_ff_bin("ffmpeg")
 _FFPROBE = _resolve_ff_bin("ffprobe")
 
 def _silent_kwargs() -> dict:
-    """Return subprocess kwargs that fully suppress console windows on Windows."""
-    if sys.platform != "win32":
-        return {}
-    si = subprocess.STARTUPINFO()
-    si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-    si.wShowWindow = subprocess.SW_HIDE
-    return {"creationflags": subprocess.CREATE_NO_WINDOW, "startupinfo": si}
+    """Subprocess kwargs that suppress console windows and prevent invalid-handle
+    errors in PyInstaller --noconsole builds on Windows.
+
+    Root cause: in a --noconsole frozen app stdin/stdout/stderr are invalid handles.
+    Any subprocess that inherits them triggers Windows to create a new console window.
+    Fix: always redirect stdin to DEVNULL; on Windows also set CREATE_NO_WINDOW +
+    STARTUPINFO/SW_HIDE so no window is ever created or shown.
+    """
+    kwargs: dict = {"stdin": subprocess.DEVNULL}
+    if sys.platform == "win32":
+        si = subprocess.STARTUPINFO()
+        si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+        si.wShowWindow = subprocess.SW_HIDE
+        kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
+        kwargs["startupinfo"] = si
+    return kwargs
 
 # ── SGI / Tron palette  (v06 spec) ───────────────────────────────────────────
 
