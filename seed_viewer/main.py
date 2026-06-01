@@ -30,40 +30,45 @@ if sys.platform == "win32" and getattr(sys, "frozen", False):
     if _hwnd:
         ctypes.windll.user32.ShowWindow(_hwnd, 0)  # SW_HIDE = 0
 
-# Write a startup diagnostic log to help debug path/ffmpeg issues.
+# Write a startup diagnostic log to the Desktop so we can diagnose issues.
 def _write_debug_log() -> None:
-    import tempfile, traceback
-    log_path = os.path.join(tempfile.gettempdir(), "seed_viewer_debug.txt")
-    lines = [f"seed-viewer startup diagnostic", f"frozen={getattr(sys, 'frozen', False)}", ""]
+    import traceback, subprocess as _sp
+    lines = [f"seed-viewer startup diagnostic",
+             f"frozen={getattr(sys, 'frozen', False)}",
+             f"executable={sys.executable}", ""]
     try:
-        from seed_viewer.paths import SHOTS_ROOT, FFMPEG_EXE, config_summary, find_shot_folder
+        from seed_viewer.paths import config_summary, find_shot_folder
         cfg = config_summary()
         lines += [f"drive_root : {cfg['drive_root']}",
                   f"shots_root : {cfg['shots_root']}",
                   f"shots_exist: {cfg['shots_exist']}",
                   f"db_found   : {cfg['db_found']}",
                   f"ffmpeg     : {cfg['ffmpeg']}", ""]
-        # Test one shot lookup
         test_shot = "999_TRL_1060"
         sf = find_shot_folder(test_shot)
         lines.append(f"find_shot_folder({test_shot!r}) = {sf}")
         if sf:
-            children = [p.name for p in sf.iterdir()][:10]
-            lines.append(f"  contents: {children}")
+            lines.append(f"  contents: {[p.name for p in sf.iterdir()][:10]}")
         lines.append("")
-        # Test ffmpeg
-        import subprocess
-        r = subprocess.run([cfg["ffmpeg"], "-version"],
-                          capture_output=True, text=True, timeout=10)
-        lines.append(f"ffmpeg -version exit={r.returncode}")
-        lines.append(r.stdout.splitlines()[0] if r.stdout else r.stderr[:200])
+        r = _sp.run([cfg["ffmpeg"], "-version"], capture_output=True, text=True, timeout=10)
+        lines.append(f"ffmpeg exit={r.returncode}")
+        lines.append((r.stdout or r.stderr or "").splitlines()[0] if (r.stdout or r.stderr) else "(no output)")
     except Exception:
         lines.append(traceback.format_exc())
-    try:
-        with open(log_path, "w", encoding="utf-8") as f:
-            f.write("\n".join(lines))
-    except Exception:
-        pass
+
+    text = "\n".join(lines)
+    # Try Desktop first, then home dir, then alongside the exe
+    for candidate in [
+        os.path.join(os.path.expanduser("~"), "Desktop", "seed_viewer_debug.txt"),
+        os.path.join(os.path.expanduser("~"), "seed_viewer_debug.txt"),
+        os.path.join(os.path.dirname(sys.executable), "seed_viewer_debug.txt"),
+    ]:
+        try:
+            with open(candidate, "w", encoding="utf-8") as f:
+                f.write(text)
+            break
+        except Exception:
+            continue
 
 _write_debug_log()
 from pathlib import Path
