@@ -18,6 +18,17 @@ import os
 import subprocess
 import sys
 import threading
+
+# On Windows, PyInstaller --noconsole builds have no console at all.
+# Every subprocess call to a console app (ffmpeg.exe) then causes Windows
+# to spawn a new console window for it. Fix: allocate one hidden console
+# at startup — all subprocesses inherit it silently.
+if sys.platform == "win32" and getattr(sys, "frozen", False):
+    import ctypes
+    ctypes.windll.kernel32.AllocConsole()
+    _hwnd = ctypes.windll.kernel32.GetConsoleWindow()
+    if _hwnd:
+        ctypes.windll.user32.ShowWindow(_hwnd, 0)  # SW_HIDE = 0
 from pathlib import Path
 from typing import Callable
 
