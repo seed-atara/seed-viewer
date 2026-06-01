@@ -24,18 +24,25 @@ OUTDIR = HERE / "ffmpeg"
 # Static binary sources (no runtime deps, no GPL codec issues for our use case)
 URLS = {
     # macOS universal binary (arm64 + x86_64) from evermeet.cx
-    "Darwin": {
-        "url":      "https://evermeet.cx/ffmpeg/ffmpeg-7.1.zip",
-        "archive":  "ffmpeg-7.1.zip",
-        "bin_name": "ffmpeg",
-    },
-    # Windows static build from gyan.dev (essentials, no LGPL extras)
-    "Windows": {
-        "url":      "https://github.com/GyanD/codexffmpeg/releases/download/7.1/ffmpeg-7.1-essentials_build.zip",
-        "archive":  "ffmpeg-7.1-essentials_build.zip",
-        "bin_name": "ffmpeg.exe",
-        "bin_path": "ffmpeg-7.1-essentials_build/bin/ffmpeg.exe",
-    },
+    "Darwin": [
+        {"url": "https://evermeet.cx/ffmpeg/ffmpeg-7.1.zip",  "archive": "ffmpeg-7.1.zip",        "bin_name": "ffmpeg"},
+        {"url": "https://evermeet.cx/ffmpeg/ffprobe-7.1.zip", "archive": "ffprobe-7.1.zip",       "bin_name": "ffprobe"},
+    ],
+    # Windows static build from gyan.dev (essentials) — both ffmpeg.exe and ffprobe.exe in bin/
+    "Windows": [
+        {
+            "url":      "https://github.com/GyanD/codexffmpeg/releases/download/7.1/ffmpeg-7.1-essentials_build.zip",
+            "archive":  "ffmpeg-7.1-essentials_build.zip",
+            "bin_name": "ffmpeg.exe",
+            "bin_path": "ffmpeg-7.1-essentials_build/bin/ffmpeg.exe",
+        },
+        {
+            "url":      "https://github.com/GyanD/codexffmpeg/releases/download/7.1/ffmpeg-7.1-essentials_build.zip",
+            "archive":  "ffmpeg-7.1-essentials_build.zip",
+            "bin_name": "ffprobe.exe",
+            "bin_path": "ffmpeg-7.1-essentials_build/bin/ffprobe.exe",
+        },
+    ],
 }
 
 SYS = platform.system()
@@ -48,36 +55,47 @@ def _progress(block_num, block_size, total_size):
     print(f"\r  [{bar}] {pct}%  ", end="", flush=True)
 
 
-def download() -> None:
-    info = URLS.get(SYS)
-    if not info:
-        sys.exit(f"ERROR: No FFmpeg URL configured for {SYS}")
-
+def _download_one(info: dict) -> None:
     OUTDIR.mkdir(parents=True, exist_ok=True)
     final_bin = OUTDIR / info["bin_name"]
 
     if final_bin.exists():
-        print(f"FFmpeg already present: {final_bin}")
+        print(f"  Already present: {final_bin}")
         return
 
     archive_path = OUTDIR / info["archive"]
-    print(f"Downloading FFmpeg ({SYS})...")
-    print(f"  From: {info['url']}")
-    urlretrieve(info["url"], archive_path, reporthook=_progress)
-    print()
+    # Re-use a cached archive (Windows: ffmpeg and ffprobe share the same zip)
+    if not archive_path.exists():
+        print(f"  Downloading {info['url']} ...")
+        urlretrieve(info["url"], archive_path, reporthook=_progress)
+        print()
 
-    print("Extracting...")
+    print(f"  Extracting {info['bin_name']} ...")
     with zipfile.ZipFile(archive_path) as zf:
         bin_inside = info.get("bin_path", info["bin_name"])
         with zf.open(bin_inside) as src, open(final_bin, "wb") as dst:
             dst.write(src.read())
 
-    # Make executable on Unix
     if SYS != "Windows":
         final_bin.chmod(final_bin.stat().st_mode | stat.S_IEXEC | stat.S_IXGRP | stat.S_IXOTH)
 
-    archive_path.unlink()  # clean up zip
-    print(f"FFmpeg ready: {final_bin}")
+    print(f"  Ready: {final_bin}")
+
+
+def download() -> None:
+    entries = URLS.get(SYS)
+    if not entries:
+        sys.exit(f"ERROR: No FFmpeg URL configured for {SYS}")
+
+    print(f"Downloading FFmpeg binaries ({SYS})...")
+    for info in entries:
+        _download_one(info)
+
+    # Clean up any leftover archives
+    for info in entries:
+        p = OUTDIR / info["archive"]
+        if p.exists():
+            p.unlink()
 
 
 if __name__ == "__main__":

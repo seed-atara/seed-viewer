@@ -110,7 +110,21 @@ THUMB_W, THUMB_H = 160, 90    # 2-column grid (16:9, fits 2 per row in ~360px br
 
 CACHE_DIR = Path(tempfile.gettempdir()) / "ks_shot_viewer"
 CACHE_DIR.mkdir(exist_ok=True)
-_FFMPEG = shutil.which("ffmpeg") or "ffmpeg"
+def _resolve_ff_bin(name: str) -> str:
+    """Resolve ffmpeg/ffprobe: bundled copy first (PyInstaller), then PATH."""
+    if getattr(sys, "frozen", False):
+        import platform as _p
+        ext = ".exe" if _p.system() == "Windows" else ""
+        b = Path(getattr(sys, "_MEIPASS", "")) / "ffmpeg" / f"{name}{ext}"
+        if b.exists():
+            return str(b)
+    found = shutil.which(name)
+    return found if found else name
+
+_FFMPEG  = _resolve_ff_bin("ffmpeg")
+_FFPROBE = _resolve_ff_bin("ffprobe")
+# Suppress console windows on Windows for every subprocess call
+_POPEN_FLAGS: int = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
 # ── SGI / Tron palette  (v06 spec) ───────────────────────────────────────────
 
@@ -411,10 +425,11 @@ class FrameCache:
     def _decode(self):
         try:
             r = subprocess.run(
-                ["ffprobe","-v","quiet","-select_streams","v:0",
+                [_FFPROBE,"-v","quiet","-select_streams","v:0",
                  "-count_packets","-show_entries","stream=nb_read_packets",
                  "-of","csv=p=0", str(self.src)],
-                capture_output=True, text=True, timeout=10)
+                capture_output=True, text=True, timeout=10,
+                creationflags=_POPEN_FLAGS)
             self.n_total = max(1, int(r.stdout.strip()))
         except Exception:
             self.n_total = 0
@@ -424,7 +439,8 @@ class FrameCache:
             [_FFMPEG, "-i", str(self.src),
              "-f","rawvideo","-pix_fmt","rgb24",
              "-vf", f"scale={self.w}:{self.h}:force_original_aspect_ratio=decrease,pad={self.w}:{self.h}:(ow-iw)/2:(oh-ih)/2:color=#07090f", "pipe:1"],
-            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+            creationflags=_POPEN_FLAGS)
         total_bytes = 0
         try:
             while not self._stop.is_set():
@@ -528,7 +544,7 @@ def get_first_frame(src: Path, layer: str) -> Optional[Path]:
     if cached.exists():
         return cached
     subprocess.run([_FFMPEG,"-y","-i",str(src),"-vframes","1","-q:v","3",str(cached)],
-                   capture_output=True)
+                   capture_output=True, creationflags=_POPEN_FLAGS)
     return cached if cached.exists() else None
 
 def get_last_frame(src: Path, layer: str) -> Optional[Path]:
@@ -540,20 +556,20 @@ def get_last_frame(src: Path, layer: str) -> Optional[Path]:
     if cached.exists():
         return cached
     probe = subprocess.run(
-        ["ffprobe","-v","quiet","-select_streams","v:0",
+        [_FFPROBE,"-v","quiet","-select_streams","v:0",
          "-count_packets","-show_entries","stream=nb_read_packets",
          "-of","csv=p=0", str(src)],
-        capture_output=True, text=True)
+        capture_output=True, text=True, creationflags=_POPEN_FLAGS)
     try:
         n = int(probe.stdout.strip())
         subprocess.run(
             [_FFMPEG,"-y","-i",str(src),"-vf",
              f"select=eq(n\\,{max(0,n-1)})","-vsync","0","-vframes","1","-q:v","3",str(cached)],
-            capture_output=True)
+            capture_output=True, creationflags=_POPEN_FLAGS)
     except Exception:
         subprocess.run(
             [_FFMPEG,"-y","-sseof","-1","-i",str(src),"-vframes","1","-q:v","3",str(cached)],
-            capture_output=True)
+            capture_output=True, creationflags=_POPEN_FLAGS)
     return cached if cached.exists() else None
 
 def get_frame_at(src: Path, layer: str, frame_n: int) -> Optional[Path]:
@@ -567,7 +583,7 @@ def get_frame_at(src: Path, layer: str, frame_n: int) -> Optional[Path]:
     subprocess.run(
         [_FFMPEG,"-y","-i",str(src),"-vf",
          f"select=eq(n\\,{frame_n})","-vsync","0","-vframes","1","-q:v","3",str(cached)],
-        capture_output=True)
+        capture_output=True, creationflags=_POPEN_FLAGS)
     return cached if cached.exists() else None
 
 def load_display_image(src: Optional[Path], layer: str, w: int, h: int,

@@ -7,9 +7,10 @@
 import sys
 from pathlib import Path
 
-REPO   = Path(SPECPATH).parent   # repo root
-ASSETS = REPO / "assets"
-FFMPEG = REPO / "build" / "ffmpeg" / "ffmpeg"
+REPO    = Path(SPECPATH).parent   # repo root
+ASSETS  = REPO / "assets"
+FFMPEG  = REPO / "build" / "ffmpeg" / "ffmpeg"
+FFPROBE = REPO / "build" / "ffmpeg" / "ffprobe"
 
 block_cipher = None
 
@@ -17,7 +18,8 @@ a = Analysis(
     [str(REPO / "seed_viewer" / "main.py")],
     pathex=[str(REPO)],
     binaries=[
-        (str(FFMPEG), "ffmpeg"),   # bundled ffmpeg at _MEIPASS/ffmpeg/ffmpeg
+        (str(FFMPEG),  "ffmpeg"),   # bundled at _MEIPASS/ffmpeg/ffmpeg
+        (str(FFPROBE), "ffmpeg"),   # bundled at _MEIPASS/ffmpeg/ffprobe
     ],
     datas=[
         (str(ASSETS / "fonts"), "assets/fonts"),
