@@ -30,47 +30,6 @@ if sys.platform == "win32" and getattr(sys, "frozen", False):
     if _hwnd:
         ctypes.windll.user32.ShowWindow(_hwnd, 0)  # SW_HIDE = 0
 
-# Write a startup diagnostic log to the Desktop so we can diagnose issues.
-def _write_debug_log() -> None:
-    import traceback, subprocess as _sp
-    lines = [f"seed-viewer startup diagnostic",
-             f"frozen={getattr(sys, 'frozen', False)}",
-             f"executable={sys.executable}", ""]
-    try:
-        from seed_viewer.paths import config_summary, find_shot_folder
-        cfg = config_summary()
-        lines += [f"drive_root : {cfg['drive_root']}",
-                  f"shots_root : {cfg['shots_root']}",
-                  f"shots_exist: {cfg['shots_exist']}",
-                  f"db_found   : {cfg['db_found']}",
-                  f"ffmpeg     : {cfg['ffmpeg']}", ""]
-        test_shot = "999_TRL_1060"
-        sf = find_shot_folder(test_shot)
-        lines.append(f"find_shot_folder({test_shot!r}) = {sf}")
-        if sf:
-            lines.append(f"  contents: {[p.name for p in sf.iterdir()][:10]}")
-        lines.append("")
-        r = _sp.run([cfg["ffmpeg"], "-version"], capture_output=True, text=True, timeout=10)
-        lines.append(f"ffmpeg exit={r.returncode}")
-        lines.append((r.stdout or r.stderr or "").splitlines()[0] if (r.stdout or r.stderr) else "(no output)")
-    except Exception:
-        lines.append(traceback.format_exc())
-
-    text = "\n".join(lines)
-    # Try Desktop first, then home dir, then alongside the exe
-    for candidate in [
-        os.path.join(os.path.expanduser("~"), "Desktop", "seed_viewer_debug.txt"),
-        os.path.join(os.path.expanduser("~"), "seed_viewer_debug.txt"),
-        os.path.join(os.path.dirname(sys.executable), "seed_viewer_debug.txt"),
-    ]:
-        try:
-            with open(candidate, "w", encoding="utf-8") as f:
-                f.write(text)
-            break
-        except Exception:
-            continue
-
-_write_debug_log()
 from pathlib import Path
 from typing import Callable
 
@@ -539,9 +498,38 @@ class LauncherWindow(QMainWindow):
 
 # ── Entry point ────────────────────────────────────────────────────────────────
 
+def _show_debug_dialog(app: "QApplication") -> None:
+    import traceback, subprocess as _sp
+    from PySide6.QtWidgets import QMessageBox
+    lines = [f"frozen={getattr(sys, 'frozen', False)}", f"exe={sys.executable}", ""]
+    try:
+        from seed_viewer.paths import config_summary, find_shot_folder
+        cfg = config_summary()
+        lines += [f"drive_root:  {cfg['drive_root']}",
+                  f"shots_root:  {cfg['shots_root']}",
+                  f"shots_exist: {cfg['shots_exist']}",
+                  f"db_found:    {cfg['db_found']}",
+                  f"ffmpeg:      {cfg['ffmpeg']}", ""]
+        sf = find_shot_folder("999_TRL_1060")
+        lines.append(f"find_shot_folder(999_TRL_1060) = {sf}")
+        if sf:
+            lines.append(f"contents: {[p.name for p in sf.iterdir()][:8]}")
+        lines.append("")
+        r = _sp.run([cfg["ffmpeg"], "-version"], capture_output=True, text=True, timeout=10)
+        lines.append(f"ffmpeg exit={r.returncode}  {(r.stdout or r.stderr or '').splitlines()[0]}")
+    except Exception:
+        lines.append(traceback.format_exc())
+    msg = QMessageBox()
+    msg.setWindowTitle("Seed Viewer — Debug Info")
+    msg.setText("\n".join(lines))
+    msg.exec()
+
+
 def main():
     app = QApplication.instance() or QApplication(sys.argv)
     _apply_palette(app)
+    if getattr(sys, "frozen", False):   # remove this block once thumbnails work
+        _show_debug_dialog(app)
     win = LauncherWindow()
     win.show()
     sys.exit(app.exec())
