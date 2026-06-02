@@ -499,29 +499,57 @@ class LauncherWindow(QMainWindow):
 # ── Entry point ────────────────────────────────────────────────────────────────
 
 def _show_debug_dialog(app: "QApplication") -> None:
-    import traceback, subprocess as _sp
+    import traceback, subprocess as _sp, tempfile
     from PySide6.QtWidgets import QMessageBox
-    lines = [f"frozen={getattr(sys, 'frozen', False)}", f"exe={sys.executable}", ""]
+    from pathlib import Path
+    lines = []
     try:
         from seed_viewer.paths import config_summary, find_shot_folder
         cfg = config_summary()
-        lines += [f"drive_root:  {cfg['drive_root']}",
-                  f"shots_root:  {cfg['shots_root']}",
-                  f"shots_exist: {cfg['shots_exist']}",
-                  f"db_found:    {cfg['db_found']}",
-                  f"ffmpeg:      {cfg['ffmpeg']}", ""]
         sf = find_shot_folder("999_TRL_1060")
-        lines.append(f"find_shot_folder(999_TRL_1060) = {sf}")
-        if sf:
-            lines.append(f"contents: {[p.name for p in sf.iterdir()][:8]}")
-        lines.append("")
-        r = _sp.run([cfg["ffmpeg"], "-version"], capture_output=True, text=True, timeout=10)
-        lines.append(f"ffmpeg exit={r.returncode}  {(r.stdout or r.stderr or '').splitlines()[0]}")
+
+        # Find a source file (first PNG or mp4)
+        src = None
+        for pat in ["firstframe/*.png", "mp4/*_4k.mp4", "mp4/*.mp4"]:
+            hits = sorted(sf.glob(pat)) if sf else []
+            if hits:
+                src = hits[0]
+                lines.append(f"source: {src.name}  ({pat})")
+                break
+        if not src:
+            lines.append("source: NONE FOUND")
+
+        # Test PIL open
+        if src and src.suffix.lower() == ".png":
+            try:
+                from PIL import Image
+                img = Image.open(src)
+                lines.append(f"PIL.Image.open: OK  {img.size} {img.mode}")
+            except Exception as e:
+                lines.append(f"PIL.Image.open FAILED: {e}")
+
+        # Test ffmpeg frame extract
+        if src and src.suffix.lower() == ".mp4":
+            try:
+                from PIL import Image
+                out = Path(tempfile.gettempdir()) / "sv_test_frame.jpg"
+                r = _sp.run([cfg["ffmpeg"], "-y", "-i", str(src), "-vframes", "1", "-q:v", "3", str(out)],
+                            capture_output=True, timeout=30)
+                if out.exists():
+                    img = Image.open(out)
+                    lines.append(f"ffmpeg extract+PIL: OK  {img.size}")
+                else:
+                    lines.append(f"ffmpeg extract: NO OUTPUT  exit={r.returncode}")
+                    lines.append(r.stderr[-300:] if r.stderr else "(no stderr)")
+            except Exception as e:
+                lines.append(f"ffmpeg extract FAILED: {e}")
+
     except Exception:
         lines.append(traceback.format_exc())
+
     msg = QMessageBox()
-    msg.setWindowTitle("Seed Viewer — Debug Info")
-    msg.setText("\n".join(lines))
+    msg.setWindowTitle("Seed Viewer — Thumbnail Debug")
+    msg.setText("\n".join(lines) or "(no output)")
     msg.exec()
 
 
