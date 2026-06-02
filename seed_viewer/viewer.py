@@ -372,6 +372,12 @@ class _Dispatcher(QObject):
     def instance(cls) -> "_Dispatcher":
         if cls._inst is None:
             cls._inst = cls()
+            # Always live on the main thread so postEvent delivers there.
+            # Without this, lazy creation from a worker thread means events
+            # go to a threadpool thread with no event loop and are never fired.
+            app = QCoreApplication.instance()
+            if app:
+                cls._inst.moveToThread(app.thread())
         return cls._inst
 
     def customEvent(self, ev: QEvent):

@@ -556,8 +556,6 @@ def _show_debug_dialog(app: "QApplication") -> None:
 def main():
     app = QApplication.instance() or QApplication(sys.argv)
     _apply_palette(app)
-    if getattr(sys, "frozen", False):   # remove this block once thumbnails work
-        _show_debug_dialog(app)
     win = LauncherWindow()
     win.show()
     sys.exit(app.exec())
