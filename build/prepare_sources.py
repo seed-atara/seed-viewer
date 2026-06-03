@@ -128,16 +128,35 @@ def _add_launch_fn(src: str, fn_body: str) -> str:
 
 VIEWER_LAUNCH = '''
 def launch() -> "QMainWindow | None":
-    """Called by the launcher. Returns the main viewer window."""
+    """Called by the launcher. Returns the main viewer window.
+
+    Frozen builds use this instead of main(), so it must replicate main()'s
+    app-level setup: dispatcher (thumbnail delivery), viewer stylesheet/fonts,
+    and the Space event filter (hold-to-play). Skipping any of these is why
+    the bundle previously had blank thumbnails and dead playback.
+    """
     from PySide6.QtWidgets import QApplication
     import sys
     app = QApplication.instance() or QApplication(sys.argv)
+    app.setStyle("Fusion")
+    try:
+        _load_fonts()
+        app.setFont(_best_mono_font())
+    except Exception:
+        pass
     # Create the dispatcher on the MAIN thread before ShotViewerApp() spawns
     # its thumbnail worker pool. Otherwise the first worker thread creates it
     # lazily with worker-thread affinity and thumbnail events never deliver.
-    # (When run via main(), line ~3053 already does this — frozen uses launch().)
     _Dispatcher.instance()
     win = ShotViewerApp()
+    try:
+        win.setStyleSheet(QSS)
+    except Exception:
+        pass
+    # Install the app-level Space filter so hold-to-play works regardless of
+    # focus. Keep a reference on the window so it is not garbage-collected.
+    win._space_filter = _SpaceFilter(win)
+    app.installEventFilter(win._space_filter)
     return win
 '''
 
