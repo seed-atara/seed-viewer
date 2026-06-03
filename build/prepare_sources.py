@@ -132,6 +132,11 @@ def launch() -> "QMainWindow | None":
     from PySide6.QtWidgets import QApplication
     import sys
     app = QApplication.instance() or QApplication(sys.argv)
+    # Create the dispatcher on the MAIN thread before ShotViewerApp() spawns
+    # its thumbnail worker pool. Otherwise the first worker thread creates it
+    # lazily with worker-thread affinity and thumbnail events never deliver.
+    # (When run via main(), line ~3053 already does this — frozen uses launch().)
+    _Dispatcher.instance()
     win = ShotViewerApp()
     return win
 '''
