@@ -14,15 +14,22 @@ FFPROBE = REPO / "build" / "ffmpeg" / "ffprobe"
 
 block_cipher = None
 
+SV = REPO / "seed_viewer"   # pipeline backend is copied here by prepare_sources
+
 a = Analysis(
     [str(REPO / "seed_viewer" / "main.py")],
-    pathex=[str(REPO)],
+    # include seed_viewer/ on pathex so the Artist Hub's top-level backend imports
+    # (import pipeline_state, …) resolve to the copies prepare_sources placed there.
+    pathex=[str(REPO), str(SV)],
     binaries=[
         (str(FFMPEG),  "ffmpeg"),   # bundled at _MEIPASS/ffmpeg/ffmpeg
         (str(FFPROBE), "ffmpeg"),   # bundled at _MEIPASS/ffmpeg/ffprobe
     ],
     datas=[
         (str(ASSETS / "fonts"), "assets/fonts"),
+        # Artist Hub data files — must sit next to the bundled backend modules.
+        (str(SV / "task_spec.json"), "seed_viewer"),
+        (str(SV / "agents.json"),    "seed_viewer"),
     ],
     hiddenimports=[
         "PySide6.QtCore",
@@ -35,6 +42,10 @@ a = Analysis(
         # dynamically loaded via importlib.import_module() in main.py
         "seed_viewer.viewer",
         "seed_viewer.roto_align",
+        "seed_viewer.pipeline_panel",
+        # the Artist Hub backend (imported as top-level modules by the panel)
+        "pipeline_state", "pipeline_auth", "pipeline_artifacts", "pipeline_resolve",
+        "pipeline_naming", "pipeline_silo", "pipeline_paths",
     ],
     hookspath=[str(REPO / "build" / "hooks")],
     hooksconfig={},
