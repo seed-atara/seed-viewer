@@ -69,7 +69,7 @@ TOOLS: list[dict] = [
         "desc":    "Contact sheet · Wipe A/B compare · Playback",
         "module":  "seed_viewer.viewer",
         "fn":      "launch",
-        "accent":  "#3A86FF",
+        "accent":  "#00E5FF",
     },
     {
         "kind":    "module",
@@ -78,7 +78,7 @@ TOOLS: list[dict] = [
         "desc":    "Align masks to plates · Export RGBA talent",
         "module":  "seed_viewer.roto_align",
         "fn":      "launch",
-        "accent":  "#FF6B6B",
+        "accent":  "#FFB347",
     },
     {
         "kind":    "module",
@@ -87,7 +87,7 @@ TOOLS: list[dict] = [
         "desc":    "Sign in · claim shots · publish versions · run tools",
         "module":  "seed_viewer.pipeline_panel",
         "fn":      "launch",
-        "accent":  "#00EAFF",
+        "accent":  "#7C4DFF",
     },
     # ── CLI tools (add more below as they become available) ────────────────────
     # {
@@ -106,13 +106,16 @@ TOOLS: list[dict] = [
 
 # ── Palette ────────────────────────────────────────────────────────────────────
 
-BG       = "#141414"
-CARD_BG  = "#1E1E1E"
-CARD_BRD = "#2A2A2A"
-TEXT_PRI = "#F0F0F0"
-TEXT_SEC = "#888888"
-OK_COL   = "#06D6A0"
-ERR_COL  = "#FF6B6B"
+# SEED design system (GMUNK-grounded: deep black, cyan hero, amber energy accent)
+BG       = "#04060A"
+CARD_BG  = "#08141B"
+CARD_BRD = "#0B3540"
+TEXT_PRI = "#CFEAF2"
+TEXT_SEC = "#3C5A64"
+OK_COL   = "#00E5FF"
+ERR_COL  = "#FFB347"
+CY       = "#00E5FF"
+AM       = "#FFB347"
 
 
 def _apply_palette(app: QApplication) -> None:
@@ -125,7 +128,7 @@ def _apply_palette(app: QApplication) -> None:
     pal.setColor(QPalette.Text,            QColor(TEXT_PRI))
     pal.setColor(QPalette.Button,          QColor(CARD_BG))
     pal.setColor(QPalette.ButtonText,      QColor(TEXT_PRI))
-    pal.setColor(QPalette.Highlight,       QColor("#3A86FF"))
+    pal.setColor(QPalette.Highlight,       QColor(CY))
     pal.setColor(QPalette.HighlightedText, QColor("#FFFFFF"))
     app.setPalette(pal)
 
@@ -431,16 +434,18 @@ class ToolCard(QFrame):
 class LauncherWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Seed Viewer")
-        self.setMinimumWidth(420)
+        self.setWindowTitle("SEEDSTUDIO")
+        self.setMinimumWidth(440)
 
         from seed_viewer.paths import config_summary
         cfg = config_summary()
 
         # Header
-        title = QLabel("Seed Viewer")
-        title.setFont(QFont("", 22, QFont.Bold))
-        title.setStyleSheet(f"color: {TEXT_PRI};")
+        title = QLabel("◢ SEEDSTUDIO")
+        _tf = QFont("", 20, QFont.Black)
+        _tf.setLetterSpacing(QFont.AbsoluteSpacing, 4)
+        title.setFont(_tf)
+        title.setStyleSheet(f"color: {CY};")
 
         ok = cfg["shots_exist"] and cfg["db_found"]
         status_parts = []
