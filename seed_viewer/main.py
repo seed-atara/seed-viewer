@@ -80,6 +80,15 @@ TOOLS: list[dict] = [
         "fn":      "launch",
         "accent":  "#FF6B6B",
     },
+    {
+        "kind":    "module",
+        "key":     "pipeline",
+        "label":   "Pipeline · Checkout",
+        "desc":    "Sign in · claim shots · publish versions · run tools",
+        "module":  "seed_viewer.pipeline_panel",
+        "fn":      "launch",
+        "accent":  "#00EAFF",
+    },
     # ── CLI tools (add more below as they become available) ────────────────────
     # {
     #     "kind":    "cli",

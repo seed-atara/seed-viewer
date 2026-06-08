@@ -13,3 +13,17 @@ dist/
 .DS_Store
 Thumbs.db
 reinstall_viewer.bat
+
+# Bundled pipeline backend (copied from seed-film at build time by
+# build/prepare_sources.py — frozen into the binary, never committed here).
+seed_viewer/pipeline_panel.py
+seed_viewer/pipeline_paths.py
+seed_viewer/pipeline_naming.py
+seed_viewer/pipeline_state.py
+seed_viewer/pipeline_silo.py
+seed_viewer/pipeline_resolve.py
+seed_viewer/pipeline_artifacts.py
+seed_viewer/pipeline_auth.py
+seed_viewer/task_spec.json
+seed_viewer/agents.json
+seed_viewer/comfy_workflows/

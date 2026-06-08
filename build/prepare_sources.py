@@ -171,6 +171,40 @@ def launch() -> "QMainWindow | None":
 '''
 
 
+# The Artist Hub panel + the pipeline backend it needs at runtime. These are
+# copied into seed_viewer/ at build time and gitignored (NOT committed to the
+# public repo) — the frozen binary bundles them, so no source is exposed. They
+# import each other as top-level modules; artist_hub_qt does sys.path.insert(HERE)
+# so the copies resolve within seed_viewer/. No import patching needed.
+_PIPELINE_PANEL = "artist_hub_qt.py"                 # -> seed_viewer/pipeline_panel.py
+_PIPELINE_BACKEND = [
+    "pipeline_paths.py", "pipeline_naming.py", "pipeline_state.py", "pipeline_silo.py",
+    "pipeline_resolve.py", "pipeline_artifacts.py", "pipeline_auth.py",
+]
+_PIPELINE_DATA = ["task_spec.json", "agents.json"]
+
+
+def _copy_pipeline(source_repo: Path, dry_run: bool) -> None:
+    """Bundle the Artist Hub panel + its backend into seed_viewer/ (gitignored)."""
+    jobs = [(source_repo / _PIPELINE_PANEL, SV_PKG / "pipeline_panel.py")]
+    jobs += [(source_repo / m, SV_PKG / m) for m in _PIPELINE_BACKEND + _PIPELINE_DATA]
+    for src, dst in jobs:
+        if not src.exists():
+            print(f"  WARN: {src.name} not found — skip (artist hub may not load)")
+            continue
+        if dry_run:
+            print(f"  DRY: {src.name} -> seed_viewer/{dst.name}")
+        else:
+            shutil.copy2(src, dst)
+            print(f"  OK : {src.name} -> seed_viewer/{dst.name}")
+    # ComfyUI workflow templates (optional, for the tools)
+    wf_src = source_repo / "comfy_workflows"
+    if wf_src.exists() and not dry_run:
+        (SV_PKG / "comfy_workflows").mkdir(exist_ok=True)
+        for f in wf_src.glob("*.json"):
+            shutil.copy2(f, SV_PKG / "comfy_workflows" / f.name)
+
+
 def prepare(source_repo: Path, dry_run: bool = False) -> None:
     if not source_repo.exists():
         sys.exit(f"ERROR: seed-film repo not found: {source_repo}")
@@ -179,6 +213,7 @@ def prepare(source_repo: Path, dry_run: bool = False) -> None:
         (source_repo / "shot_viewer_qt.py", SV_PKG / "viewer.py",      False, True),
         (source_repo / "roto_align.py",     SV_PKG / "roto_align.py",  True,  False),
     ]
+    _copy_pipeline(source_repo, dry_run)
 
     for src_path, dst_path, is_roto, strip_delivery in tasks:
         if not src_path.exists():
