@@ -79,6 +79,7 @@ TOOLS: list[dict] = [
         "module":  "seed_viewer.roto_align",
         "fn":      "launch",
         "accent":  "#FFB347",
+        "section": "tools",
     },
     {
         "kind":    "module",
@@ -476,11 +477,21 @@ class LauncherWindow(QMainWindow):
         header.addLayout(header_row)
         header.addWidget(status)
 
-        # Tool cards
+        # Tool cards — primary tools first, then a "Tools" subsection (utilities;
+        # more tools land here over time).
         cards_col = QVBoxLayout()
         cards_col.setSpacing(10)
-        for tool in TOOLS:
+        primary = [t for t in TOOLS if t.get("section") != "tools"]
+        tools   = [t for t in TOOLS if t.get("section") == "tools"]
+        for tool in primary:
             cards_col.addWidget(ToolCard(tool))
+        if tools:
+            sub = QLabel("◢ TOOLS")
+            sub.setStyleSheet(f"color: {CY}; font-weight: bold; font-size: 11px; "
+                              f"letter-spacing: 2px; padding: 12px 2px 2px;")
+            cards_col.addWidget(sub)
+            for tool in tools:
+                cards_col.addWidget(ToolCard(tool))
         cards_col.addStretch()
 
         cards_w = QWidget()
