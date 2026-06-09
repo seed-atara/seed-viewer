@@ -44,7 +44,7 @@ a = Analysis(
         "seed_viewer.pipeline_panel",
         # the Artist Hub backend (imported as top-level modules by the panel)
         "pipeline_state", "pipeline_auth", "pipeline_artifacts", "pipeline_resolve",
-        "pipeline_naming", "pipeline_silo", "pipeline_paths",
+        "pipeline_naming", "pipeline_silo", "pipeline_paths", "hub_client",
     ],
     hookspath=[str(REPO / "build" / "hooks")],
     hooksconfig={},

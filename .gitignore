@@ -27,3 +27,4 @@ seed_viewer/pipeline_auth.py
 seed_viewer/task_spec.json
 seed_viewer/agents.json
 seed_viewer/comfy_workflows/
+seed_viewer/hub_client.py

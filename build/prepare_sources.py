@@ -179,7 +179,7 @@ def launch() -> "QMainWindow | None":
 _PIPELINE_PANEL = "artist_hub_qt.py"                 # -> seed_viewer/pipeline_panel.py
 _PIPELINE_BACKEND = [
     "pipeline_paths.py", "pipeline_naming.py", "pipeline_state.py", "pipeline_silo.py",
-    "pipeline_resolve.py", "pipeline_artifacts.py", "pipeline_auth.py",
+    "pipeline_resolve.py", "pipeline_artifacts.py", "pipeline_auth.py", "hub_client.py",
 ]
 _PIPELINE_DATA = ["task_spec.json", "agents.json"]
 
