@@ -78,8 +78,8 @@ exe = EXE(
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
-    upx=True,               # compress the exe on Windows (reduce size ~30%)
-    upx_exclude=["vcruntime140.dll", "python3*.dll"],
+    upx=False,              # UPX corrupts python3xx.dll on newer runners ->
+                            # "Failed to start embedded python interpreter". Off.
     console=False,
     disable_windowed_traceback=False,
     argv_emulation=False,
@@ -96,7 +96,6 @@ coll = COLLECT(
     a.zipfiles,
     a.datas,
     strip=False,
-    upx=True,
-    upx_exclude=["vcruntime140.dll"],
+    upx=False,              # off — see EXE() above
     name="SeedViewer",
 )
