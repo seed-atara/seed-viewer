@@ -46,6 +46,9 @@ a = Analysis(
         # the Artist Hub backend (imported as top-level modules by the panel)
         "pipeline_state", "pipeline_auth", "pipeline_artifacts", "pipeline_resolve",
         "pipeline_naming", "pipeline_silo", "pipeline_paths", "hub_client",
+        # stdlib submodules hub_client uses that nothing else pulls in (PyInstaller
+        # can miss these → "No module named 'http.cookiejar'" at panel load).
+        "http.cookiejar", "urllib.request", "urllib.parse", "urllib.error",
     ],
     hookspath=[str(REPO / "build" / "hooks")],
     hooksconfig={},
