@@ -4,3 +4,4 @@ pyinstaller-hooks-contrib>=2024.1
 PySide6>=6.6,<7
 Pillow>=10.0
 numpy>=1.24
+requests>=2.31   # bundled Beeble/Magnific submit tools

@@ -44,6 +44,53 @@ from PySide6.QtWidgets import (
 
 HERE = Path(__file__).parent
 
+
+# ── Users / permissions (gating) ────────────────────────────────────────────────
+
+def _load_agents() -> list[dict]:
+    import json
+    try:
+        return json.loads((HERE / "agents.json").read_text(encoding="utf-8")).get("agents", [])
+    except Exception:
+        return []
+
+
+def _current_user() -> str:
+    return (os.environ.get("SF_USER", "") or "").strip().lower()
+
+
+def _user_allowed(tool: dict) -> bool:
+    """Tools with no 'requires' are open to everyone. Otherwise the configured
+    SF_USER must be a supervisor/producer, or list the permission in their
+    agents.json 'tools'."""
+    req = tool.get("requires")
+    if not req:
+        return True
+    u = _current_user()
+    for a in _load_agents():
+        if a.get("name", "").lower() == u:
+            if a.get("role") in ("supervisor", "producer"):
+                return True
+            perms = a.get("tools") or []
+            return req in perms or "all" in perms
+    return False
+
+
+def _run_tool(modname: str, args: list[str]) -> None:
+    """Dispatch target for the frozen exe self-invoking a bundled CLI tool
+    (SeedViewer.exe --tool beeble_submit --shot ...). Runs it in-process."""
+    # importing paths loads ~/.seed-viewer.env into os.environ, so the tool sees
+    # SF_* paths + API keys (BEEBLE_API_KEY, etc.) the artist configured.
+    try:
+        from seed_viewer import paths as _paths  # noqa: F401
+    except Exception:
+        pass
+    sys.path.insert(0, str(HERE))
+    sys.argv = [modname] + list(args)
+    mod = importlib.import_module(f"seed_viewer.{modname}")
+    mod.main()
+
+
 # ── Tool registry ──────────────────────────────────────────────────────────────
 # Each entry is either a "module" tool (opens a Qt window via launch())
 # or a "cli" tool (runs a subprocess with configurable args via CliForm).
@@ -90,19 +137,38 @@ TOOLS: list[dict] = [
         "fn":      "launch",
         "accent":  "#7C4DFF",
     },
-    # ── CLI tools (add more below as they become available) ────────────────────
-    # {
-    #     "kind":    "cli",
-    #     "key":     "beeble",
-    #     "label":   "Beeble Submit",
-    #     "desc":    "Submit BG removal job to Beeble",
-    #     "cmd":     ["python", "-m", "seed_viewer.cli.beeble_submit"],
-    #     "args": [
-    #         {"flag": "--shot",  "label": "Shot code",  "placeholder": "081_PTY_1380"},
-    #         {"flag": "--force", "label": "Force redo",  "type": "bool"},
-    #     ],
-    #     "accent":  "#06D6A0",
-    # },
+    # ── CLI tools — gated (require permission in agents.json 'tools') ───────────
+    {
+        "kind":    "cli",
+        "key":     "beeble",
+        "label":   "Beeble Submit",
+        "desc":    "AI background removal · Beeble SwitchX",
+        "section": "tools",
+        "requires": "beeble",
+        "tool_module": "beeble_submit",
+        "args": [
+            {"flag": "--shot",        "label": "Shot",        "placeholder": "028_LMC_1200"},
+            {"flag": "--alpha-mode",  "label": "Alpha mode",  "placeholder": "auto"},
+            {"flag": "--prompt",      "label": "Prompt",      "placeholder": "(optional)"},
+            {"flag": "--auto-prompt", "label": "Auto prompt", "type": "bool"},
+            {"flag": "--poll",        "label": "Poll pending","type": "bool"},
+        ],
+        "accent":  "#06D6A0",
+    },
+    {
+        "kind":    "cli",
+        "key":     "magnific",
+        "label":   "Magnific Upres",
+        "desc":    "Up-res / restyle · Magnific",
+        "section": "tools",
+        "requires": "magnific",
+        "tool_module": "magnific_submit",
+        "args": [
+            {"flag": "--shot",   "label": "Shot",    "placeholder": "028_LMC_1200"},
+            {"flag": "--poll",   "label": "Poll",    "type": "bool"},
+        ],
+        "accent":  "#FF6AC2",
+    },
 ]
 
 # ── Palette ────────────────────────────────────────────────────────────────────
@@ -140,11 +206,17 @@ class SettingsDialog(QDialog):
     """Configure drive paths. Saves to ~/.seed-viewer.env."""
 
     ENV_VARS = [
+        ("SF_USER",        "User",        "Your username (gates tools like Beeble to permitted users)",
+         "sholto"),
         ("SF_DRIVE_ROOT",  "Drive root",  "Path to the mounted project drive root",
          "G:/Shared drives/SATOSHI_DRIVE/SATOSHI  or  /Volumes/SATOSHI_DRIVE/SATOSHI"),
         ("SF_SHOTS_ROOT",  "Shots root",  "Root of all shot folders (leave blank = drive root/_SHOTS)",
          ""),
         ("SF_FFMPEG_EXE",  "FFmpeg path", "Full path to ffmpeg binary (leave blank = use bundled)",
+         ""),
+        ("BEEBLE_API_KEY",    "Beeble API key",    "Required to submit Beeble jobs (leave blank if not using)",
+         ""),
+        ("ANTHROPIC_API_KEY", "Anthropic API key", "Only needed for Beeble --auto-prompt (Claude vision)",
          ""),
     ]
 
@@ -293,7 +365,15 @@ class CliRunner(QDialog):
         vbox.addLayout(btn_row)
 
     def _build_cmd(self) -> list[str]:
-        cmd = list(self._tool["cmd"])
+        tm = self._tool.get("tool_module")
+        if tm:
+            # frozen: re-invoke the exe; dev: re-invoke the launcher module
+            if getattr(sys, "frozen", False):
+                cmd = [sys.executable, "--tool", tm]
+            else:
+                cmd = [sys.executable, "-m", "seed_viewer.main", "--tool", tm]
+        else:
+            cmd = list(self._tool["cmd"])
         for flag, widget in self._fields.items():
             if isinstance(widget, QPushButton):
                 if widget.isChecked():
@@ -481,8 +561,8 @@ class LauncherWindow(QMainWindow):
         # more tools land here over time).
         cards_col = QVBoxLayout()
         cards_col.setSpacing(10)
-        primary = [t for t in TOOLS if t.get("section") != "tools"]
-        tools   = [t for t in TOOLS if t.get("section") == "tools"]
+        primary = [t for t in TOOLS if t.get("section") != "tools" and _user_allowed(t)]
+        tools   = [t for t in TOOLS if t.get("section") == "tools" and _user_allowed(t)]
         for tool in primary:
             cards_col.addWidget(ToolCard(tool))
         if tools:
@@ -579,6 +659,11 @@ def _show_debug_dialog(app: "QApplication") -> None:
 
 
 def main():
+    # Frozen exe self-invokes for bundled CLI tools: SeedViewer.exe --tool beeble_submit ...
+    if len(sys.argv) >= 3 and sys.argv[1] == "--tool":
+        _run_tool(sys.argv[2], sys.argv[3:])
+        return
+
     app = QApplication.instance() or QApplication(sys.argv)
     _apply_palette(app)
     win = LauncherWindow()

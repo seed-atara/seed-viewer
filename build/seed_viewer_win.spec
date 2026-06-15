@@ -45,6 +45,9 @@ a = Analysis(
         # the Artist Hub backend (imported as top-level modules by the panel)
         "pipeline_state", "pipeline_auth", "pipeline_artifacts", "pipeline_resolve",
         "pipeline_naming", "pipeline_silo", "pipeline_paths", "hub_client",
+        # gated CLI tools — run in-process via the exe's --tool self-invoke
+        "seed_viewer.beeble_submit", "seed_viewer.magnific_submit",
+        "beeble_submit", "magnific_submit", "requests",
         # stdlib submodules hub_client uses that nothing else pulls in (PyInstaller
         # can miss these → "No module named 'http.cookiejar'" at panel load).
         "http.cookiejar", "urllib.request", "urllib.parse", "urllib.error",
