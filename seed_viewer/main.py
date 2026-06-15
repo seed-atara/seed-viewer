@@ -120,16 +120,6 @@ TOOLS: list[dict] = [
     },
     {
         "kind":    "module",
-        "key":     "roto_align",
-        "label":   "Roto Align",
-        "desc":    "Align masks to plates · Export RGBA talent",
-        "module":  "seed_viewer.roto_align",
-        "fn":      "launch",
-        "accent":  "#FFB347",
-        "section": "tools",
-    },
-    {
-        "kind":    "module",
         "key":     "pipeline",
         "label":   "Pipeline · Checkout",
         "desc":    "Sign in · claim shots · publish versions · run tools",
@@ -144,7 +134,6 @@ TOOLS: list[dict] = [
         "label":   "Beeble Submit",
         "desc":    "AI background removal · Beeble SwitchX",
         "section": "tools",
-        "requires": "beeble",
         "tool_module": "beeble_submit",
         "args": [
             {"flag": "--shot",        "label": "Shot",        "placeholder": "028_LMC_1200"},
@@ -161,7 +150,6 @@ TOOLS: list[dict] = [
         "label":   "Magnific Upres",
         "desc":    "Up-res / restyle · Magnific",
         "section": "tools",
-        "requires": "magnific",
         "tool_module": "magnific_submit",
         "args": [
             {"flag": "--shot",   "label": "Shot",    "placeholder": "028_LMC_1200"},
