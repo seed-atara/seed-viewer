@@ -34,6 +34,7 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from functools import lru_cache
+from collections import OrderedDict
 from pathlib import Path
 from typing import Optional
 
@@ -52,7 +53,7 @@ from PySide6.QtGui import (
 )
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QFrame, QLabel, QComboBox,
-    QPushButton, QRadioButton, QButtonGroup, QListWidget, QListWidgetItem,
+    QPushButton, QCheckBox, QRadioButton, QButtonGroup, QListWidget, QListWidgetItem,
     QPlainTextEdit, QScrollArea, QSplitter, QSizePolicy,
     QHBoxLayout, QVBoxLayout, QGridLayout, QStatusBar, QToolButton, QSlider,
     QDialog, QLineEdit, QMessageBox, QFileDialog, QMenu, QAbstractItemView,
@@ -83,27 +84,29 @@ RESOLUTIONS = {"HD": (1280, 720), "UHD": (1920, 1080)}
 
 # ── Layer definitions ─────────────────────────────────────────────────────────
 
+# Layers map to the CANONICAL task layout (post-migration): the AI renders all
+# live in genai/, masks in masks/, comp in comp/V###/. Legacy globs (vfx/, upres/,
+# mp4/, firstframe/) are kept as fallbacks so un-migrated/PULL_PT* shots still load.
 LAYERS: dict[str, dict] = {
-    "plate":      {"label": "Plate 4K",       "globs": ["plate/mp4/*_4k.mp4","plate/mp4/*_4K_*.mp4",
-                                                          "mp4/*_4k.mp4","mp4/*_4K_*.mp4","mp4/*.mp4"],           "is_video": True},
-    "plate_hd":   {"label": "Plate HD",       "globs": ["plate/mp4/*_hd.mp4","plate/mp4/*_HD_*.mp4",
-                                                          "mp4/*_hd.mp4","mp4/*_HD_*.mp4"],                       "is_video": True},
-    "ffs":        {"label": "First Frame",    "globs": ["keyframes/ff/*.png",
-                                                          "firstframe/*.png","mp4/*_ff_*.png"],                    "is_video": False},
-    "wai":        {"label": "WAI",            "globs": ["vfx/*_wai_V*.mp4","vfx/*_wai_*.mp4"],                   "is_video": True},
-    "comp":       {"label": "Comp",           "globs": ["comp/*/*.mp4"],                                          "is_video": True},
-    "upres":      {"label": "Upres/Magnific", "globs": ["upres/*.mp4"],                                           "is_video": True},
-    "depth":      {"label": "Depth",          "globs": ["depth/*_review.mp4"],                                    "is_video": True},
-    "mask":       {"label": "Mask (comb)",    "globs": ["masks/*_combined_*.mp4"],                                "is_video": True},
-    "mask_roto":  {"label": "Mask (roto)",    "globs": ["masks/*_rot_rtm-*.mp4"],                                 "is_video": True},
-    "faceswap":   {"label": "Faceswap",       "globs": ["faceswap/*.mp4"],                                        "is_video": True},
-    "uvx_albedo": {"label": "UVX Albedo",     "globs": ["unividx/intrinsic_V*/*_albedo.mp4"],                    "is_video": True},
-    "uvx_irrad":  {"label": "UVX Irradiance", "globs": ["unividx/intrinsic_V*/*_irradiance.mp4"],                "is_video": True},
-    "uvx_normal": {"label": "UVX Normal",     "globs": ["unividx/*/normal*.mp4","unividx/*/*_normal.mp4"],        "is_video": True},
-    "uvx_alpha":  {"label": "UVX Alpha",      "globs": ["unividx/alpha_V*/*_alpha.mp4"],                         "is_video": True},
-    "uvx_fg":     {"label": "UVX FG",         "globs": ["unividx/alpha_V*/*_fg.mp4"],                            "is_video": True},
-    "uvx_bg":     {"label": "UVX BG",         "globs": ["unividx/alpha_V*/*_bg.mp4"],                            "is_video": True},
-    "uvx_relit":  {"label": "UVX Relit",      "globs": ["unividx/relight_V*/*_rgb.mp4"],                         "is_video": True},
+    "plate":      {"label": "Plate 4K",   "globs": ["plate/3840x2160/mp4/*.mp4","plate/4096x*/mp4/*.mp4",
+                                                     "plate/5504x*/mp4/*.mp4",
+                                                     "plate/mp4/*_4k.mp4","plate/mp4/*_4K_*.mp4",
+                                                     "mp4/*_4k.mp4","mp4/*_4K_*.mp4","mp4/*.mp4"],          "is_video": True},
+    "plate_hd":   {"label": "Plate HD",   "globs": ["plate/1920x1080/mp4/*.mp4","plate/1932x1080/mp4/*.mp4",
+                                                     "plate/mp4/*_hd.mp4","plate/mp4/*_HD_*.mp4",
+                                                     "mp4/*_hd.mp4","mp4/*_HD_*.mp4"],                      "is_video": True},
+    "ffs":        {"label": "First Frame","globs": ["keyframes/ff/*.png","keyframes/ff/*.jpg",
+                                                     "ff/V*/*.png","ff/V*/*.jpg",
+                                                     "mp4/*_ff_*.png"],                                    "is_video": False},
+    "wai":        {"label": "GenAI (WAI)","globs": ["genai/*_wai_*.mp4","genai/*_bg_*.mp4",
+                                                     "genai/backgrounds/*.mp4","genai/backgrounds*.mp4",
+                                                     "vfx/*_wai_V*.mp4","vfx/*_wai_*.mp4"],                 "is_video": True},
+    "magnific":   {"label": "Magnific",   "globs": ["genai/magnific/*.mp4","genai/magnific*.mp4","upres/*.mp4"], "is_video": True},
+    "style":      {"label": "Style",      "globs": ["genai/style/*.mp4","genai/style*.mp4"],               "is_video": True},
+    "gfx":        {"label": "GFX",        "globs": ["genai/gfx/*.mp4","genai/gfx*.mp4"],                   "is_video": True},
+    "comp":       {"label": "Comp",       "globs": ["comp/V*/**/*.mp4","comp/*/*.mp4","comp/*.mp4"],       "is_video": True},
+    "mask":       {"label": "Mask",       "globs": ["masks/*.mp4","masks/*_combined_*.mp4"],               "is_video": True},
+    "layout":     {"label": "Layout",     "globs": ["layout/**/*.mp4","layout/*.mp4"],                     "is_video": True},
 }
 CASCADE_ORDER = ["comp", "wai", "ffs", "plate_hd", "plate"]
 THUMB_W, THUMB_H = 160, 90    # 2-column grid (16:9, fits 2 per row in ~360px browser)
@@ -357,6 +360,23 @@ QSlider::sub-page:horizontal {{
 }}
 """
 
+# ── Debug log (read directly off disk; remove once thumbnails confirmed) ───────
+import tempfile as _tempfile
+_LOG_PATH = Path(_tempfile.gettempdir()) / "seed_viewer.log"
+try:
+    _LOG_PATH.write_text("", encoding="utf-8")  # truncate at import
+except Exception:
+    pass
+
+def _dbg(msg: str) -> None:
+    try:
+        import threading as _th
+        with open(_LOG_PATH, "a", encoding="utf-8") as _f:
+            _f.write(f"[{_th.current_thread().name}] {msg}\n")
+    except Exception:
+        pass
+
+
 # ── Main-thread dispatcher ────────────────────────────────────────────────────
 
 class _CallEvent(QEvent):
@@ -367,6 +387,9 @@ class _CallEvent(QEvent):
 
 class _Dispatcher(QObject):
     _inst: Optional["_Dispatcher"] = None
+    _fired: int = 0
+    _gfired: int = 0   # grade-motion apply debug counter
+    _gmove: int = 0    # grade-motion filter-catch debug counter
 
     @classmethod
     def instance(cls) -> "_Dispatcher":
@@ -378,10 +401,15 @@ class _Dispatcher(QObject):
             app = QCoreApplication.instance()
             if app:
                 cls._inst.moveToThread(app.thread())
+            _dbg(f"_Dispatcher created; app={app is not None} "
+                 f"on_main={app is not None and QThread.currentThread() == app.thread()}")
         return cls._inst
 
     def customEvent(self, ev: QEvent):
         if ev.type() == _CallEvent._etype:
+            _Dispatcher._fired += 1
+            if _Dispatcher._fired <= 3:
+                _dbg(f"customEvent fired #{_Dispatcher._fired}")
             ev.fn()
 
 def post_to_main(fn):
@@ -394,26 +422,134 @@ class _SpaceFilter(QObject):
     Application-level event filter that intercepts Space before any focused
     widget (QComboBox, QPushButton, etc.) can consume it.  This ensures
     hold-to-play always works regardless of which panel has focus.
+
+    It also tracks the grade-drag hold keys (E exposure, C gamma, V saturation)
+    at app level for the same reason: the window's keyPressEvent only fires when
+    focus is on the window itself, so E/C/V drag would silently fail whenever a
+    child widget (wipe view, combobox) holds focus.
     """
+    _GRADE_KEYS = ("e", "c", "v")
+
     def __init__(self, viewer: "ShotViewerApp", parent=None):
         super().__init__(parent)
         self._viewer = viewer
 
     def eventFilter(self, obj, ev):
-        if ev.type() == QEvent.Type.KeyPress and ev.key() == Qt.Key.Key_Space:
+        et = ev.type()
+        if et == QEvent.Type.KeyPress and ev.key() == Qt.Key.Key_Space:
             fw = QApplication.focusWidget()
             if isinstance(fw, (QLineEdit, QPlainTextEdit)):
                 return False   # let text inputs keep Space
             if not ev.isAutoRepeat():
                 self._viewer._on_space_press()
             return True        # swallow initial AND auto-repeat — never reaches combobox
-        if ev.type() == QEvent.Type.KeyRelease and ev.key() == Qt.Key.Key_Space and not ev.isAutoRepeat():
+        if et == QEvent.Type.KeyRelease and ev.key() == Qt.Key.Key_Space and not ev.isAutoRepeat():
             fw = QApplication.focusWidget()
             if isinstance(fw, (QLineEdit, QPlainTextEdit)):
                 return False
             self._viewer._on_space_release()
             return True
+
+        # While a grade key is held, drive the virtual slider from app-level
+        # mouse-move events. The wipe's instance-overridden mouseMoveEvent proxy
+        # is unreliable under PySide6 virtual dispatch, so this is the path that
+        # actually fires. QCursor.pos() gives the global X regardless of target.
+        if et == QEvent.Type.MouseMove and (self._viewer._held_keys & set(self._GRADE_KEYS)):
+            if _Dispatcher._gmove < 3:
+                _Dispatcher._gmove += 1
+                _dbg(f"filter MouseMove with grade keys={self._viewer._held_keys} "
+                     f"x={QCursor.pos().x()}")
+            self._viewer._grade_motion_at(QCursor.pos().x())
+            return False
+
+        # Grade hold-keys (E/C/V) — track regardless of focus, don't swallow.
+        if et in (QEvent.Type.KeyPress, QEvent.Type.KeyRelease):
+            fw = QApplication.focusWidget()
+            if isinstance(fw, (QLineEdit, QPlainTextEdit)):
+                return False
+            txt = ev.text().lower()
+            # Handle auto-repeat too: a repeat KeyPress must cancel a deferred
+            # release (coalescing), so do NOT filter on isAutoRepeat() here.
+            if txt in self._GRADE_KEYS:
+                if et == QEvent.Type.KeyPress:
+                    self._viewer._grade_hold.key_down(txt)
+                    self._viewer.wipe.setCursor(Qt.CursorShape.SizeHorCursor)
+                    if not self._viewer._grade_timer.isActive():
+                        self._viewer._grade_timer.start()   # poll cursor while held
+                    _dbg(f"KEYDOWN {txt} held={self._viewer._held_keys}")
+                else:
+                    # Deferred clear (coalesced); _grade_tick stops the timer and
+                    # restores the cursor once the hold set actually empties.
+                    self._viewer._grade_hold.key_up(txt)
+                    _dbg(f"KEYUP {txt} held={self._viewer._held_keys}")
+            return False
         return False
+
+
+class _GradeHold:
+    """
+    Tracks which grade keys (E/C/V) are physically held, coalescing the spurious
+    KeyRelease/KeyPress storm that Windows keyboard auto-repeat emits while a key
+    is held down (the release events report isAutoRepeat()==False, so they cannot
+    be filtered directly — they would otherwise clear the held key mid-gesture).
+
+    On key_up, the clear is deferred by `delay_ms`; an intervening key_down (the
+    auto-repeat press) cancels it. Only a genuine release — with no following
+    press inside the window — actually clears the key. `schedule(ms, fn)` is
+    injected (QTimer.singleShot in the app, a controllable stub in tests).
+    """
+    GRADE_KEYS = ("e", "c", "v")
+
+    def __init__(self, schedule, delay_ms: int = 60):
+        self._schedule = schedule
+        self._delay    = delay_ms
+        self.held: set = set()
+        self._pending: set = set()
+
+    def key_down(self, k: str) -> None:
+        if k not in self.GRADE_KEYS:
+            return
+        self.held.add(k)
+        self._pending.discard(k)        # cancel any in-flight release for this key
+
+    def key_up(self, k: str) -> None:
+        if k not in self.GRADE_KEYS:
+            return
+        self._pending.add(k)
+        self._schedule(self._delay, lambda kk=k: self._finalize(kk))
+
+    def _finalize(self, k: str) -> None:
+        if k in self._pending:          # not cancelled by a repeat press → real release
+            self._pending.discard(k)
+            self.held.discard(k)
+
+    def active(self) -> bool:
+        return bool(self.held & set(self.GRADE_KEYS))
+
+
+class _WipeGradeFilter(QObject):
+    """
+    Event filter installed directly ON the wipe widget. App-level filters do not
+    reliably receive hover MouseMove events, so the grade slider is driven here:
+    the wipe definitely receives its own mouse moves (its divider-drag works), and
+    with mouse tracking on it gets button-less hover moves too.
+    """
+    def __init__(self, viewer: "ShotViewerApp", parent=None):
+        super().__init__(parent)
+        self._viewer = viewer
+
+    def eventFilter(self, obj, ev):
+        if ev.type() == QEvent.Type.MouseMove:
+            gk = self._viewer._held_keys & {"e", "c", "v"}
+            if gk:
+                # Only log while a grade key is held — aligns the capture window
+                # with the actual gesture instead of burning the budget on idle moves.
+                if _Dispatcher._gmove < 12:
+                    _Dispatcher._gmove += 1
+                    _dbg(f"wipe MouseMove(grade) keys={self._viewer._held_keys} "
+                         f"x={QCursor.pos().x()}")
+                self._viewer._grade_motion_at(QCursor.pos().x())
+        return False   # never consume — wipe still does divider drag / pan
 
 
 # ── FrameCache (logic verbatim from shot_viewer.py) ───────────────────────────
@@ -538,6 +674,160 @@ def find_cascade(sf: Path) -> tuple[Optional[Path], str]:
         if p:
             return p, layer
     return None, ""
+
+# ── VLC editorial preview ────────────────────────────────────────────────────
+_VLC_PATHS = [
+    r"C:\Program Files\VideoLAN\VLC\vlc.exe",
+    r"C:\Program Files (x86)\VideoLAN\VLC\vlc.exe",
+    "/Applications/VLC.app/Contents/MacOS/VLC",
+]
+
+
+def _find_vlc() -> Optional[str]:
+    for p in _VLC_PATHS:
+        if Path(p).exists():
+            return p
+    return shutil.which("vlc")
+
+
+def resolve_layer_sources(shotcodes: list[str], layer: str) -> list[tuple[str, str, bool]]:
+    """For each shot, one source for `layer` (or 'cascade'), in order.
+    Returns [(shotcode, file, is_video), ...]."""
+    out: list[tuple[str, str, bool]] = []
+    for sc in shotcodes:
+        sf = find_shot_folder(sc)
+        if not sf:
+            continue
+        if layer == "cascade":
+            p, used = find_cascade(sf)
+        else:
+            p, used = find_source(sf, layer), layer
+        if p:
+            out.append((sc, str(p), bool(LAYERS.get(used, {}).get("is_video", True))))
+    return out
+
+
+def _edit_window(meta: dict, fps: int = 24) -> Optional[tuple[float, float]]:
+    """(start_sec, stop_sec) of the actual edit (handles trimmed) for a clip that
+    spans the worked range, or None if the handle data isn't usable."""
+    try:
+        head = int(meta.get("head_handle"))
+        cut = int(meta.get("cut_length"))
+        if head >= 0 and cut > 0:
+            return head / fps, (head + cut) / fps
+    except (TypeError, ValueError):
+        pass
+    return None
+
+
+def _build_xspf(items: list[tuple[str, str, bool]], db: dict, fps: int = 24) -> Path:
+    """VLC playlist with per-track start/stop = the cut (handles removed)."""
+    import urllib.parse
+    tracks = []
+    for sc, f, is_vid in items:
+        loc = "file:///" + urllib.parse.quote(f.replace("\\", "/"))
+        opt = ""
+        win = _edit_window(db.get(sc, {}), fps) if is_vid else None
+        if win:
+            opt = ("<extension application=\"http://www.videolan.org/vlc/playlist/0\">"
+                   f"<vlc:option>start-time={win[0]:.3f}</vlc:option>"
+                   f"<vlc:option>stop-time={win[1]:.3f}</vlc:option></extension>")
+        tracks.append(f"<track><location>{loc}</location>{opt}</track>")
+    xml = ("<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
+           "<playlist version=\"1\" xmlns=\"http://xspf.org/ns/0/\" "
+           "xmlns:vlc=\"http://www.videolan.org/vlc/playlist/ns/0/\"><trackList>"
+           + "".join(tracks) + "</trackList></playlist>")
+    p = CACHE_DIR / "ks_edit_preview.xspf"
+    p.write_text(xml, encoding="utf-8")
+    return p
+
+
+def play_in_vlc(items: list[tuple[str, str, bool]], db: Optional[dict] = None,
+                trim_handles: bool = False) -> str:
+    """Launch VLC. items = [(shotcode, file, is_video)]. With trim_handles, video
+    clips play only their cut range (via an XSPF playlist). Returns '' or an error."""
+    vlc = _find_vlc()
+    if not vlc:
+        return "VLC not found — install VLC (videolan.org) or add it to PATH"
+    if not items:
+        return "No sources found for that layer"
+    has_images = any(not iv for _, _, iv in items)
+    cmd = [vlc, "--no-video-title-show", "--play-and-exit"]
+    if trim_handles and not has_images and db is not None:
+        cmd.append(str(_build_xspf(items, db)))
+    else:
+        if has_images:
+            cmd += ["--image-duration=2"]
+        cmd += [f for _, f, _ in items]
+    try:
+        subprocess.Popen(cmd, **_silent_kwargs())
+    except Exception as e:
+        return f"VLC launch failed: {e}"
+    return ""
+
+
+def build_fcpxml(seq_name: str, items: list[tuple[str, str, bool]], db: dict,
+                 fps: int = 24, trim: bool = False) -> str:
+    """Final Cut Pro 7 (xmeml v5) timeline of the shots in cut order. With trim,
+    each clip's in/out is the cut (head_handle..cut_out); else the full clip.
+    Importable into Premiere / Resolve / FCP."""
+    import html
+    import re
+    import urllib.parse
+
+    clips, tl, fid, seq_w, seq_h = [], 0, 0, 1920, 1080
+    for sc, path, is_vid in items:
+        if not is_vid:
+            continue
+        meta = db.get(sc, {})
+        comp = int(meta.get("comp_length") or 0)
+        head = int(meta.get("head_handle") or 0)
+        cut = int(meta.get("cut_length") or 0)
+        if trim and cut > 0:
+            cin, cout = head, head + cut
+        else:
+            cin, cout = 0, (comp or cut)
+        dur = cout - cin
+        if dur <= 0:
+            continue
+        fid += 1
+        fname = Path(path).name
+        m = re.search(r"(\d+)x(\d+)", fname)
+        w, h = (int(m.group(1)), int(m.group(2))) if m else (1920, 1080)
+        if fid == 1:
+            seq_w, seq_h = w, h
+        url = "file://localhost/" + urllib.parse.quote(str(path).replace("\\", "/"), safe="/:")
+        clips.append(
+            f'    <clipitem id="clipitem-{fid}">\n'
+            f'     <name>{html.escape(sc)}</name>\n'
+            f'     <duration>{comp or dur}</duration>\n'
+            f'     <rate><timebase>{fps}</timebase><ntsc>FALSE</ntsc></rate>\n'
+            f'     <in>{cin}</in><out>{cout}</out>\n'
+            f'     <start>{tl}</start><end>{tl + dur}</end>\n'
+            f'     <file id="file-{fid}">\n'
+            f'      <name>{html.escape(fname)}</name>\n'
+            f'      <pathurl>{url}</pathurl>\n'
+            f'      <rate><timebase>{fps}</timebase><ntsc>FALSE</ntsc></rate>\n'
+            f'      <duration>{comp or dur}</duration>\n'
+            f'      <media><video><samplecharacteristics><width>{w}</width>'
+            f'<height>{h}</height></samplecharacteristics></video></media>\n'
+            f'     </file>\n'
+            f'    </clipitem>')
+        tl += dur
+
+    return (
+        '<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE xmeml>\n<xmeml version="5">\n'
+        f' <sequence id="seq-1">\n  <name>{html.escape(seq_name)}</name>\n'
+        f'  <duration>{tl}</duration>\n'
+        f'  <rate><timebase>{fps}</timebase><ntsc>FALSE</ntsc></rate>\n'
+        '  <media>\n   <video>\n'
+        f'    <format><samplecharacteristics><width>{seq_w}</width>'
+        f'<height>{seq_h}</height>'
+        f'<rate><timebase>{fps}</timebase><ntsc>FALSE</ntsc></rate>'
+        '</samplecharacteristics></format>\n    <track>\n'
+        + "\n".join(clips)
+        + '\n    </track>\n   </video>\n  </media>\n </sequence>\n</xmeml>\n')
+
 
 def _ver_label(path: Path, idx: int) -> str:
     m = re.search(r'[vV](\d+)', path.stem)
@@ -694,6 +984,25 @@ class PanelHeader(QWidget):
 
 # ── ShotCell widget (used in QListWidget) ─────────────────────────────────────
 
+class _ThumbLabel(QLabel):
+    """Thumbnail label that overlays a full-cell red X when the shot is omitted."""
+    def __init__(self, omit: bool = False, parent=None):
+        super().__init__(parent)
+        self._omit = omit
+
+    def paintEvent(self, ev):
+        super().paintEvent(ev)
+        if not self._omit:
+            return
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        p.setPen(QPen(QColor(210, 40, 40), 3))
+        w, h = self.width(), self.height()
+        p.drawLine(0, 0, w, h)   # top-left → bottom-right
+        p.drawLine(w, 0, 0, h)   # top-right → bottom-left (right-to-left)
+        p.end()
+
+
 class ShotCell(QWidget):
     """One browser row: thin accent + thumbnail + shotcode + layer badge."""
     def __init__(self, shotcode: str, accent: str = C_CYAN_DIM,
@@ -719,8 +1028,8 @@ class ShotCell(QWidget):
         accent_bar.setPalette(ap)
         layout.addWidget(accent_bar)
 
-        # Thumbnail
-        self.thumb_lbl = QLabel(self)
+        # Thumbnail (omit cells overlay a full-cell red X)
+        self.thumb_lbl = _ThumbLabel(is_omit, self)
         self.thumb_lbl.setFixedSize(THUMB_W, THUMB_H)
         self.thumb_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
         ph = _pil_to_qpixmap(_placeholder(THUMB_W, THUMB_H, "..."))
@@ -764,9 +1073,13 @@ class ShotCell(QWidget):
 
     def set_thumbnail(self, pil_img: Image.Image):
         try:
-            self.thumb_lbl.setPixmap(_pil_to_qpixmap(pil_img))
-        except RuntimeError:
-            pass
+            pix = _pil_to_qpixmap(pil_img)
+            self.thumb_lbl.setPixmap(pix)
+            if _Dispatcher._fired <= 3:
+                _dbg(f"set_thumbnail {self._shotcode}: pix={pix.width()}x{pix.height()} "
+                     f"null={pix.isNull()}")
+        except Exception as e:
+            _dbg(f"set_thumbnail FAILED {getattr(self,'_shotcode','?')}: {e!r}")
 
     def set_source(self, text: str):
         try:
@@ -790,6 +1103,7 @@ class ShotBrowser(QWidget):
         self.delivered = delivered
         self._pool     = ThreadPoolExecutor(max_workers=4)
         self._cells: dict[str, ShotCell] = {}
+        self._trim_handles = False          # VLC preview: show the cut, not the worked range
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -809,10 +1123,17 @@ class ShotBrowser(QWidget):
         fb_layout.setContentsMargins(4, 3, 4, 3)
         fb_layout.setSpacing(4)
 
-        seqs = sorted({v.get("sequence","") for v in db.values() if v.get("sequence")})
+        # "Archived" toggle — default OFF so only active (non-archived) shots/seqs show
+        self._show_archived_cb = QCheckBox("Archived", filter_bar)
+        self._show_archived_cb.setToolTip("Show archived sequences/shots (old trailer cuts, legacy pulls)")
+        self._show_archived_cb.setChecked(False)
+        self._show_archived_cb.setFixedHeight(20)
+        self._show_archived_cb.toggled.connect(self._on_archive_toggle)
+        fb_layout.addWidget(self._show_archived_cb)
+
         self._seq_cb = QComboBox(filter_bar)
-        self._seq_cb.addItems(["ALL"] + seqs)
         self._seq_cb.setFixedHeight(20)
+        self._rebuild_seq_list()          # populated per the archived toggle
         self._seq_cb.currentTextChanged.connect(self._on_seq_change)
         fb_layout.addWidget(self._seq_cb, stretch=1)
 
@@ -825,11 +1146,7 @@ class ShotBrowser(QWidget):
         self._layer_cb.currentTextChanged.connect(lambda _: self._refresh())
         fb_layout.addWidget(self._layer_cb)
 
-        refresh_btn = QPushButton("⟳", filter_bar)
-        refresh_btn.setFixedSize(22, 20)
-        refresh_btn.clicked.connect(self._refresh)
-        fb_layout.addWidget(refresh_btn)
-
+        # (refresh + VLC play moved to the shot list right-click menu)
         self._count_lbl = QLabel("", filter_bar)
         self._count_lbl.setStyleSheet(f"color: {C_DIM}; font-size: 7pt;")
         fb_layout.addWidget(self._count_lbl)
@@ -854,6 +1171,8 @@ class ShotBrowser(QWidget):
         self._list.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
         self._list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self._list.itemClicked.connect(self._on_item_click)
+        self._list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self._list.customContextMenuRequested.connect(self._shot_context_menu)
         layout.addWidget(self._list, stretch=1)
 
         self._status_lbl = QLabel("", self)
@@ -890,6 +1209,27 @@ class ShotBrowser(QWidget):
         if idx >= 0:
             self._seq_cb.setCurrentIndex(idx)
 
+    def _show_archived(self) -> bool:
+        cb = getattr(self, "_show_archived_cb", None)
+        return cb is not None and cb.isChecked()
+
+    def _rebuild_seq_list(self):
+        """Populate the sequence dropdown, hiding fully-archived sequences unless toggled."""
+        show = self._show_archived()
+        prev = self._seq_cb.currentText() if self._seq_cb.count() else "ALL"
+        seqs = sorted({v.get("sequence", "") for v in self.db.values()
+                       if v.get("sequence") and (show or not v.get("archived"))})
+        self._seq_cb.blockSignals(True)
+        self._seq_cb.clear()
+        self._seq_cb.addItems(["ALL"] + seqs)
+        idx = self._seq_cb.findText(prev)
+        self._seq_cb.setCurrentIndex(idx if idx >= 0 else 0)
+        self._seq_cb.blockSignals(False)
+
+    def _on_archive_toggle(self, _checked: bool):
+        self._rebuild_seq_list()
+        self._refresh()
+
     def _on_seq_change(self, seq: str):
         self._refresh()
         self.seq_changed.emit(seq)
@@ -898,6 +1238,77 @@ class ShotBrowser(QWidget):
         w = self._list.itemWidget(item)
         if w and hasattr(w, "_shotcode") and not w._is_omit:
             self.shot_selected.emit(w._shotcode)
+
+    # ── VLC editorial preview ──────────────────────────────────────────────────
+    def _ordered_shotcodes(self) -> list[str]:
+        """Shotcodes currently shown, in cut order (as the grid lays them out)."""
+        return list(self._cells.keys())
+
+    def _edit_tag(self) -> str:
+        return ", edit" if self._trim_handles else ""
+
+    def _play_sequence(self, *_):
+        layer = self.current_layer_key()
+        items = resolve_layer_sources(self._ordered_shotcodes(), layer)
+        err = play_in_vlc(items, self.db, self._trim_handles)
+        self._status_lbl.setText(err or f"▶ VLC — {len(items)} shots [{layer}{self._edit_tag()}]")
+
+    def _play_around(self, sc: str, n: int):
+        codes = self._ordered_shotcodes()
+        if sc not in codes:
+            return
+        i = codes.index(sc)
+        sub = codes[max(0, i - n): i + n + 1]
+        layer = self.current_layer_key()
+        items = resolve_layer_sources(sub, layer)
+        err = play_in_vlc(items, self.db, self._trim_handles)
+        self._status_lbl.setText(err or f"▶ VLC — {sc} ±{n} ({len(items)}) [{layer}{self._edit_tag()}]")
+
+    def _toggle_trim(self, checked: bool):
+        self._trim_handles = bool(checked)
+        self._status_lbl.setText("Preview: actual edit (handles trimmed)"
+                                 if checked else "Preview: full worked range")
+
+    def _export_edit(self):
+        seq = self.current_seq()
+        layer = self.current_layer_key()
+        items = [it for it in resolve_layer_sources(self._ordered_shotcodes(), layer) if it[2]]
+        if not items:
+            self._status_lbl.setText("No video sources to export in this layer")
+            return
+        default = f"{seq}_{'edit' if self._trim_handles else 'full'}.xml"
+        path, _ = QFileDialog.getSaveFileName(self, "Export edit (FCP XML)", default,
+                                              "Final Cut XML (*.xml)")
+        if not path:
+            return
+        try:
+            Path(path).write_text(build_fcpxml(seq, items, self.db, trim=self._trim_handles),
+                                  encoding="utf-8")
+            self._status_lbl.setText(f"Exported {len(items)} clips → {Path(path).name}")
+        except Exception as e:
+            self._status_lbl.setText(f"Export failed: {e}")
+
+    def _shot_context_menu(self, pos):
+        item = self._list.itemAt(pos)
+        w = self._list.itemWidget(item) if item else None
+        sc = w._shotcode if (w and hasattr(w, "_shotcode")) else None
+        layer = self.current_layer_key()
+        menu = QMenu(self)
+        menu.addAction("⟳  Refresh", self._refresh)
+        menu.addSeparator()
+        menu.addAction(f"▶  Play sequence in VLC  [{layer}]", self._play_sequence)
+        if sc:
+            for n in (2, 5):
+                menu.addAction(f"▶  Preview  {sc}  ±{n} shots",
+                               lambda _=False, s=sc, k=n: self._play_around(s, k))
+        menu.addSeparator()
+        menu.addAction("💾  Export edit (FCP XML)…", self._export_edit)
+        menu.addSeparator()
+        act = menu.addAction("Actual edit — trim handles")
+        act.setCheckable(True)
+        act.setChecked(self._trim_handles)
+        act.toggled.connect(self._toggle_trim)
+        menu.exec(self._list.mapToGlobal(pos))
 
     def _refresh(self):
         self._pool.shutdown(wait=False, cancel_futures=True)
@@ -923,6 +1334,9 @@ class ShotBrowser(QWidget):
         )
         if seq != "ALL":
             shots = [s for s in shots if s.get("sequence") == seq]
+
+        if not self._show_archived():
+            shots = [s for s in shots if not s.get("archived")]
 
         self._status_lbl.setText(f"Loading {len(shots)} shots…")
         self._count_lbl.setText(str(len(shots)))
@@ -952,6 +1366,8 @@ class ShotBrowser(QWidget):
             src, used = None, ""
         img = load_display_image(src, used, THUMB_W, THUMB_H)
         src_text = f"[{used}]  {src.name[:32] if src else '—'}"
+        _dbg(f"_load_async {shotcode}: sf={'Y' if sf else 'N'} "
+             f"src={src.name if src else 'None'} img={img.size if img else 'None'}")
         post_to_main(lambda c=cell, i=img, t=src_text: (c.set_thumbnail(i), c.set_source(t)))
 
 
@@ -987,6 +1403,9 @@ class WipeView(QWidget):
         self._mid_last: Optional[QPoint] = None
 
         self._channel: Optional[str] = None
+        self._grade_cb = None   # callable(img, side)->img, set by ShotViewerApp;
+                                # applied in _process so grade hits every render
+                                # path (static, playback, frozen) like channel does
         self._overlay_on    = True
         self._overlay_lines: list[str] = []
 
@@ -998,6 +1417,14 @@ class WipeView(QWidget):
         self._cache_a: Optional[FrameCache] = None
         self._cache_b: Optional[FrameCache] = None
         self._play_cache: Optional[FrameCache] = None
+        # LRU of retired FrameCaches so revisiting a recent shot is instant (no re-decode).
+        # Bounded by RAM; tune with SF_VIEWER_CACHE_GB (default 2 GB).
+        self._frame_lru: "OrderedDict[tuple, FrameCache]" = OrderedDict()
+        try:
+            import os as _os
+            self._lru_budget = int(float(_os.environ.get("SF_VIEWER_CACHE_GB", "2")) * 1024**3)
+        except Exception:
+            self._lru_budget = 2 * 1024**3
         self._play_label_ram = "A"
         self._sched_start_time  = 0.0
         self._sched_start_frame = 0
@@ -1062,14 +1489,36 @@ class WipeView(QWidget):
             self.wipe_x = w // 2
         self.disp_w, self.disp_h = w, h
 
+    @staticmethod
+    def _cache_bytes(c) -> int:
+        return (c.loaded * c.w * c.h * 3) if c else 0
+
+    def _lru_retire(self, cache):
+        """Park a no-longer-active FrameCache so revisiting its shot is instant.
+        Lets it keep decoding; evicts the oldest only when over the RAM budget."""
+        if not cache or not getattr(cache, "src", None):
+            return
+        key = (str(cache.src), cache.w, cache.h)
+        self._frame_lru[key] = cache
+        self._frame_lru.move_to_end(key)
+        while (len(self._frame_lru) > 1 and
+               sum(self._cache_bytes(c) for c in self._frame_lru.values()) > self._lru_budget):
+            _, old = self._frame_lru.popitem(last=False)
+            old.stop()
+
+    def _lru_take(self, path, w, h):
+        """Reclaim a previously-decoded cache for (path, w, h) if we still have it."""
+        return self._frame_lru.pop((str(path), w, h), None)
+
     def load_source(self, side: str, path: Optional[Path]):
         _VIDEO_EXTS = {".mp4",".mov",".mxf",".avi",".mkv"}
         old = self._cache_a if side == "a" else self._cache_b
-        if old:
-            old.stop()
+        self._lru_retire(old)                       # keep for instant revisit (was: old.stop())
         if path and path.exists() and path.suffix.lower() in _VIDEO_EXTS:
-            prog_cb = lambda: self.cache_progress.emit()
-            cache = FrameCache(path, self.disp_w, self.disp_h, on_progress=prog_cb)
+            cache = self._lru_take(path, self.disp_w, self.disp_h)
+            if cache is None:
+                prog_cb = lambda: self.cache_progress.emit()
+                cache = FrameCache(path, self.disp_w, self.disp_h, on_progress=prog_cb)
         else:
             cache = None
         if side == "a":
@@ -1276,13 +1725,14 @@ class WipeView(QWidget):
         self._last_play_label = label
         self._last_play_fa    = None
         self._last_play_fb    = None
-        self._pixmap = _pil_to_qpixmap(self._process(img))
+        side = "b" if label == "B" else "a"
+        self._pixmap = _pil_to_qpixmap(self._process(img, side))
         self.update()
 
     def _show_wipe_play_frame(self, fa: Optional[Image.Image],
                                fb: Optional[Image.Image]):
-        a = self._process(fa) if fa else self._process(self.img_a)
-        b = self._process(fb) if fb else self._process(self.img_b)
+        a = self._process(fa, "a") if fa else self._process(self.img_a, "a")
+        b = self._process(fb, "b") if fb else self._process(self.img_b, "b")
         comp = self._wipe_compose(a, b)
         self._last_play_fa    = fa
         self._last_play_fb    = fb
@@ -1312,9 +1762,11 @@ class WipeView(QWidget):
         idx = {"r":0,"g":1,"b":2}[self._channel]
         return img.split()[idx].convert("RGB")
 
-    def _process(self, img: Image.Image) -> Image.Image:
+    def _process(self, img: Image.Image, side: Optional[str] = None) -> Image.Image:
         if img.size != (self.disp_w, self.disp_h):
             img = img.resize((self.disp_w, self.disp_h), Image.BILINEAR)
+        if side is not None and self._grade_cb is not None:
+            img = self._grade_cb(img, side)        # exposure / gamma / saturation
         return self._zoom_image(self._apply_channel(img))
 
     def _wipe_compose(self, a: Image.Image, b: Image.Image) -> Image.Image:
@@ -1335,21 +1787,21 @@ class WipeView(QWidget):
         if self._is_frozen and self._last_play_img is not None:
             # Frozen-on-frame: build per-side pixmaps so mode changes (W key, wipe drag) work.
             if self._last_play_fa is not None:
-                a = self._process(self._last_play_fa)
-                b = self._process(self._last_play_fb or self.img_b)
+                a = self._process(self._last_play_fa, "a")
+                b = self._process(self._last_play_fb or self.img_b, "b")
             elif self._last_play_label == "B":
-                a = self._process(self.img_a)
-                b = self._process(self._last_play_img)
+                a = self._process(self.img_a, "a")
+                b = self._process(self._last_play_img, "b")
             else:
-                a = self._process(self._last_play_img)
-                b = self._process(self.img_b)
+                a = self._process(self._last_play_img, "a")
+                b = self._process(self.img_b, "b")
             self._pixmap_a = _pil_to_qpixmap(a)
             self._pixmap_b = _pil_to_qpixmap(b)
             self._pixmap   = None
         else:
             # Normal display path: build per-side QPixmaps; compose in paintEvent.
-            self._pixmap_a = _pil_to_qpixmap(self._process(self.img_a))
-            self._pixmap_b = _pil_to_qpixmap(self._process(self.img_b))
+            self._pixmap_a = _pil_to_qpixmap(self._process(self.img_a, "a"))
+            self._pixmap_b = _pil_to_qpixmap(self._process(self.img_b, "b"))
             self._pixmap   = None
         self.update()
 
@@ -2101,9 +2553,15 @@ class ShotViewerApp(QMainWindow):
         self._exposure   = {"a": 0.0, "b": 0.0}
         self._gamma      = {"a": 1.0, "b": 1.0}
         self._saturation = {"a": 1.0, "b": 1.0}
-        self._held_keys: set[str] = set()
+        # Grade-key hold tracker (coalesces Windows auto-repeat release storms).
+        # _held_keys is the SAME set object the tracker owns, so existing
+        # `self._held_keys & {"e","c","v"}` checks see the coalesced state.
+        self._grade_hold = _GradeHold(lambda ms, fn: QTimer.singleShot(ms, fn))
+        self._held_keys: set[str] = self._grade_hold.held
         self._grade_drag_x: Optional[int]    = None
         self._grade_drag_sides: Optional[tuple] = None
+        self._grade_start: Optional[dict] = None  # grade values snapshot at gesture start
+        self._last_grade_x: Optional[int] = None  # last polled cursor X (skip no-op ticks)
 
         self._raw_a = _placeholder(1280, 720, "A")
         self._raw_b = _placeholder(1280, 720, "B")
@@ -2252,6 +2710,21 @@ class ShotViewerApp(QMainWindow):
         self.wipe._on_resize_cb = self._on_viewer_resize
         self.wipe.setMouseTracking(True)
         self.wipe.mouseMoveEvent = self._wipe_mouse_move_proxy(self.wipe.mouseMoveEvent)
+        # Reliable grade-slider drive: filter the wipe's own mouse-move events
+        # (app-level filters miss hover moves; instance mouseMoveEvent override is
+        # unreliable under PySide6).
+        self._wipe_grade_filter = _WipeGradeFilter(self)
+        self.wipe.installEventFilter(self._wipe_grade_filter)
+        # Apply grade at render time (in _process) so it hits every display path
+        # — static, playback, and frozen — exactly like channel isolation. img_a/
+        # img_b therefore hold the RAW frame; grade is never baked into them.
+        self.wipe._grade_cb = self._apply_grade
+        # Bulletproof slider drive: while a grade key is held, poll the cursor
+        # position on a timer instead of relying on mouse-move event delivery
+        # (which has proven flaky for hover moves across app/widget filters).
+        self._grade_timer = QTimer(self)
+        self._grade_timer.setInterval(16)   # ~60 Hz
+        self._grade_timer.timeout.connect(self._grade_tick)
         wb_lay.addWidget(self.wipe)
         vp_lay.addWidget(wipe_border, stretch=1)
 
@@ -2442,21 +2915,15 @@ class ShotViewerApp(QMainWindow):
         self.wipe.stop_play()
         self._transport.set_playing(False)
 
-    # ── Key events (grade keys only — Space handled by _SpaceFilter) ──────────
+    # ── Key events ────────────────────────────────────────────────────────────
+    # Grade keys (E/C/V) are owned entirely by _SpaceFilter → _GradeHold so that
+    # Windows auto-repeat release storms are coalesced in one place. The window
+    # handlers must NOT touch them, or they'd clear the hold and bypass that.
 
     def keyPressEvent(self, ev):
-        key = ev.text().lower()
-        if key:
-            self._held_keys.add(key)
         super().keyPressEvent(ev)
 
     def keyReleaseEvent(self, ev):
-        key = ev.text().lower()
-        if key:
-            self._held_keys.discard(key)
-            if key in ("e", "c", "v"):
-                self._grade_drag_x     = None
-                self._grade_drag_sides = None
         super().keyReleaseEvent(ev)
 
     # ── Grade drag ────────────────────────────────────────────────────────────
@@ -2473,7 +2940,29 @@ class ShotViewerApp(QMainWindow):
             return ("a","b")
         return ("a",) if widget_x_screen < wipe_screen else ("b",)
 
+    def _grade_tick(self):
+        # Driven by _grade_timer while a grade key is held. Polls the global
+        # cursor X so the slider works regardless of mouse-event delivery.
+        if not self._grade_hold.active():
+            # Hold emptied (after auto-repeat coalescing settled) — clean up.
+            self._grade_timer.stop()
+            self._last_grade_x = None
+            self._grade_drag_x = self._grade_drag_sides = self._grade_start = None
+            self.wipe.unsetCursor()
+            return
+        x = QCursor.pos().x()
+        if x == self._last_grade_x and self._grade_drag_x is not None:
+            return                       # cursor hasn't moved — no re-render
+        self._last_grade_x = x
+        self._grade_motion_at(x)
+
     def _on_grade_motion(self, ev):
+        # Proxy path (instance-overridden wipe.mouseMoveEvent). Unreliable under
+        # PySide6 virtual dispatch, so the app-level _SpaceFilter also drives
+        # _grade_motion_at() on MouseMove — that is the path that actually fires.
+        self._grade_motion_at(self.wipe.mapToGlobal(ev.position().toPoint()).x())
+
+    def _grade_motion_at(self, x_screen: int):
         grade_key = None
         keys = self._held_keys
         if "e" in keys:   grade_key = "e"
@@ -2481,30 +2970,38 @@ class ShotViewerApp(QMainWindow):
         elif "v" in keys: grade_key = "v"
         if grade_key is None:
             self._grade_drag_x = self._grade_drag_sides = None
+            self._grade_start = None
             return
-        x_screen = self.wipe.mapToGlobal(ev.position().toPoint()).x()
         if self._grade_drag_x is None:
+            # Anchor the gesture at the current cursor position.
             self._grade_drag_sides = self._grade_sides_at(x_screen)
             self._grade_drag_x = x_screen
             return
+        sides = self._grade_drag_sides or ("a", "b")
+        # Speed-dependent, incremental: accumulate per-tick deltas. The 60Hz timer
+        # drives this at a fixed rate, so dx-per-tick IS velocity — slow moves give
+        # small (fine) steps, fast moves accelerate via the power curve.
         dx = x_screen - self._grade_drag_x
         self._grade_drag_x = x_screen
         if dx == 0:
             return
         v = math.copysign(abs(dx) ** 1.5, dx)
-        sides = self._grade_drag_sides or ("a","b")
         if grade_key == "e":
-            delta = v * 0.00025
+            delta = v * 0.0008
             for s in sides:
-                self._exposure[s] = round(max(-4.0, min(4.0, self._exposure[s]+delta)), 4)
+                self._exposure[s] = round(max(-4.0, min(4.0, self._exposure[s] + delta)), 4)
         elif grade_key == "c":
-            delta = v * 0.000125
+            delta = v * 0.0004
             for s in sides:
-                self._gamma[s] = round(max(0.1, min(4.0, self._gamma[s]+delta)), 4)
+                self._gamma[s] = round(max(0.1, min(4.0, self._gamma[s] + delta)), 4)
         elif grade_key == "v":
-            delta = v * 0.000125
+            delta = v * 0.0004
             for s in sides:
-                self._saturation[s] = round(max(0.0, min(4.0, self._saturation[s]+delta)), 4)
+                self._saturation[s] = round(max(0.0, min(4.0, self._saturation[s] + delta)), 4)
+        if _Dispatcher._gfired < 12:
+            _Dispatcher._gfired += 1
+            _dbg(f"grade {grade_key} dx={dx} sides={sides} "
+                 f"exp={self._exposure} gam={self._gamma} frozen={self.wipe._is_frozen}")
         self._grade_changed(sides)
 
     # ── Toggle / mode helpers ─────────────────────────────────────────────────
@@ -2643,11 +3140,8 @@ class ShotViewerApp(QMainWindow):
         return img
 
     def _grade_changed(self, sides=("a","b")):
-        # Update static images directly — bypass set_a/set_b which reset _play_frame_num.
-        if "a" in sides:
-            self.wipe.img_a = self._apply_grade(self._raw_a, "a")
-        if "b" in sides:
-            self.wipe.img_b = self._apply_grade(self._raw_b, "b")
+        # Grade is applied in WipeView._process (every render path), so we only
+        # need to trigger a re-render — img_a/img_b stay raw.
         self.wipe._render()
         self._content.update_grade(self._exposure, self._gamma, self._saturation)
 
@@ -2725,12 +3219,12 @@ class ShotViewerApp(QMainWindow):
                     self._raw_a = raw_a
                     self.wipe.path_a = path_a
                     self.wipe.load_source("a", path_a)
-                    self.wipe.set_a(self._apply_grade(raw_a, "a"))
+                    self.wipe.set_a(raw_a)   # raw; grade applied in _process
                 if "b" in sides:
                     self._raw_b = raw_b
                     self.wipe.path_b = path_b
                     self.wipe.load_source("b", path_b)
-                    self.wipe.set_b(self._apply_grade(raw_b, "b"))
+                    self.wipe.set_b(raw_b)   # raw; grade applied in _process
                 # Restore frame position — set_a/set_b reset it to 0.
                 self.wipe._play_frame_num = saved_frame
                 self._update_status()
@@ -2893,15 +3387,16 @@ class ShotViewerApp(QMainWindow):
     def _swap(self):
         self._layer_a_key, self._layer_b_key = self._layer_b_key, self._layer_a_key
         self._raw_a,  self._raw_b  = self._raw_b,  self._raw_a
-        ea, eb = self._exposure["a"], self._exposure["b"]
-        ga, gb = self._gamma["a"],    self._gamma["b"]
-        self._exposure = {"a":eb,"b":ea}
-        self._gamma    = {"a":gb,"b":ga}
-        img_a = self._apply_grade(self._raw_a, "a")
-        img_b = self._apply_grade(self._raw_b, "b")
-        # Update static images without resetting playback state
-        self.wipe.img_a = img_a
-        self.wipe.img_b = img_b
+        ea, eb = self._exposure["a"],   self._exposure["b"]
+        ga, gb = self._gamma["a"],      self._gamma["b"]
+        sa, sb = self._saturation["a"], self._saturation["b"]
+        self._exposure   = {"a":eb,"b":ea}
+        self._gamma      = {"a":gb,"b":ga}
+        self._saturation = {"a":sb,"b":sa}
+        # Update static images (raw) without resetting playback state;
+        # grade is re-applied per side in _process at render time.
+        self.wipe.img_a = self._raw_a
+        self.wipe.img_b = self._raw_b
         # Swap frozen-frame buffers so the display reflects the new A/B order
         self.wipe._last_play_fa, self.wipe._last_play_fb = (
             self.wipe._last_play_fb, self.wipe._last_play_fa
@@ -3071,10 +3566,34 @@ if __name__ == "__main__":
 
 
 def launch() -> "QMainWindow | None":
-    """Called by the launcher. Returns the main viewer window."""
+    """Called by the launcher. Returns the main viewer window.
+
+    Frozen builds use this instead of main(), so it must replicate main()'s
+    app-level setup: dispatcher (thumbnail delivery), viewer stylesheet/fonts,
+    and the Space event filter (hold-to-play). Skipping any of these is why
+    the bundle previously had blank thumbnails and dead playback.
+    """
     from PySide6.QtWidgets import QApplication
     import sys
     app = QApplication.instance() or QApplication(sys.argv)
+    app.setStyle("Fusion")
+    try:
+        _load_fonts()
+        app.setFont(_best_mono_font())
+    except Exception:
+        pass
+    # Create the dispatcher on the MAIN thread before ShotViewerApp() spawns
+    # its thumbnail worker pool. Otherwise the first worker thread creates it
+    # lazily with worker-thread affinity and thumbnail events never deliver.
+    _Dispatcher.instance()
     win = ShotViewerApp()
+    try:
+        win.setStyleSheet(QSS)
+    except Exception:
+        pass
+    # Install the app-level Space filter so hold-to-play works regardless of
+    # focus. Keep a reference on the window so it is not garbage-collected.
+    win._space_filter = _SpaceFilter(win)
+    app.installEventFilter(win._space_filter)
     return win
 
