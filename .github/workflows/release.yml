@@ -40,6 +40,11 @@ jobs:
       - name: Prepare source files from seed-film
         run: python build/prepare_sources.py --source _seed_film
 
+      - name: Stamp build version
+        env:
+          SV_TAG: ${{ github.ref_name }}
+        run: python -c "import os;open('seed_viewer/_buildinfo.py','w').write('VERSION = %r\n' % os.environ['SV_TAG'])"
+
       - name: Download FFmpeg (macOS)
         run: python build/download_ffmpeg.py
 
@@ -87,6 +92,11 @@ jobs:
 
       - name: Prepare source files from seed-film
         run: python build/prepare_sources.py --source _seed_film
+
+      - name: Stamp build version
+        env:
+          SV_TAG: ${{ github.ref_name }}
+        run: python -c "import os;open('seed_viewer/_buildinfo.py','w').write('VERSION = %r\n' % os.environ['SV_TAG'])"
 
       - name: Download FFmpeg (Windows)
         run: python build/download_ffmpeg.py

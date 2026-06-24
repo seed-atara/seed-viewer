@@ -43,6 +43,7 @@ a = Analysis(
         "seed_viewer.viewer",
         "seed_viewer.roto_align",
         "seed_viewer.pipeline_panel",
+        "seed_viewer.updater", "seed_viewer._buildinfo",
         # the Artist Hub backend (imported as top-level modules by the panel)
         "pipeline_state", "pipeline_auth", "pipeline_artifacts", "pipeline_resolve",
         "pipeline_naming", "pipeline_silo", "pipeline_paths", "hub_client",

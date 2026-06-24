@@ -33,7 +33,7 @@ if sys.platform == "win32" and getattr(sys, "frozen", False):
 from pathlib import Path
 from typing import Callable
 
-from PySide6.QtCore import Qt, Signal, QObject
+from PySide6.QtCore import Qt, Signal, QObject, QThread, QTimer
 from PySide6.QtGui import QFont, QColor, QPalette
 from PySide6.QtWidgets import (
     QApplication, QDialog, QDialogButtonBox, QFormLayout,
@@ -646,6 +646,33 @@ def _show_debug_dialog(app: "QApplication") -> None:
     msg.exec()
 
 
+class _UpdateChecker(QThread):
+    """Background check: GitHub latest tag vs the baked-in build version."""
+    found = Signal(str)
+
+    def run(self):
+        try:
+            from seed_viewer import updater
+            v = updater.check()
+            if v:
+                self.found.emit(v)
+        except Exception:
+            pass
+
+
+def _prompt_update(win, latest):
+    from PySide6.QtWidgets import QMessageBox, QApplication
+    from seed_viewer import updater
+    cur = updater.installed_version()
+    if QMessageBox.question(
+            win, "Update available",
+            f"A newer Seed Viewer is available.\n\n"
+            f"Installed:  {cur}\nLatest:     {latest}\n\n"
+            "Update now? The app will close, update, and relaunch.",
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes) == QMessageBox.Yes:
+        updater.run_update_and_quit(QApplication.instance())
+
+
 def main():
     # Frozen exe self-invokes for bundled CLI tools: SeedViewer.exe --tool beeble_submit ...
     if len(sys.argv) >= 3 and sys.argv[1] == "--tool":
@@ -656,6 +683,10 @@ def main():
     _apply_palette(app)
     win = LauncherWindow()
     win.show()
+    # auto-update: background check; prompts on the main thread if a newer build exists
+    win._update_checker = _UpdateChecker()
+    win._update_checker.found.connect(lambda v: _prompt_update(win, v))
+    QTimer.singleShot(1500, win._update_checker.start)
     sys.exit(app.exec())
 
 
