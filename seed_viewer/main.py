@@ -127,6 +127,15 @@ TOOLS: list[dict] = [
         "fn":      "launch",
         "accent":  "#7C4DFF",
     },
+    {
+        "kind":    "module",
+        "key":     "image_edit",
+        "label":   "Seed Image Edit",
+        "desc":    "Template renders · sliders + code snippets · Make Cinematic · Color Grade",
+        "module":  "seed_viewer.seed_image_edit",
+        "fn":      "launch",
+        "accent":  "#FFB347",
+    },
     # ── CLI tools — gated (require permission in agents.json 'tools') ───────────
     {
         "kind":    "cli",

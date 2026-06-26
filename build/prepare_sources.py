@@ -186,11 +186,16 @@ _PIPELINE_DATA = ["task_spec.json", "agents.json"]
 # --tool self-invoke. Gitignored (not committed to the public repo).
 _CLI_TOOLS = ["beeble_submit.py", "magnific_submit.py"]
 
+# Self-contained "module" tools copied verbatim into seed_viewer/ (they ship their
+# own launch() and import only PySide6/numpy/Pillow, so no import patching needed).
+_MODULE_TOOLS = ["seed_image_edit.py"]
+
 
 def _copy_pipeline(source_repo: Path, dry_run: bool) -> None:
     """Bundle the Artist Hub panel + its backend into seed_viewer/ (gitignored)."""
     jobs = [(source_repo / _PIPELINE_PANEL, SV_PKG / "pipeline_panel.py")]
-    jobs += [(source_repo / m, SV_PKG / m) for m in _PIPELINE_BACKEND + _PIPELINE_DATA + _CLI_TOOLS]
+    jobs += [(source_repo / m, SV_PKG / m)
+             for m in _PIPELINE_BACKEND + _PIPELINE_DATA + _CLI_TOOLS + _MODULE_TOOLS]
     for src, dst in jobs:
         if not src.exists():
             print(f"  WARN: {src.name} not found — skip (artist hub may not load)")
