@@ -188,7 +188,7 @@ _CLI_TOOLS = ["beeble_submit.py", "magnific_submit.py"]
 
 # Self-contained "module" tools copied verbatim into seed_viewer/ (they ship their
 # own launch() and import only PySide6/numpy/Pillow, so no import patching needed).
-_MODULE_TOOLS = ["seed_image_edit.py"]
+_MODULE_TOOLS = ["seed_image_edit.py", "cine_cam.py"]
 
 
 def _copy_pipeline(source_repo: Path, dry_run: bool) -> None:

@@ -47,6 +47,8 @@ a = Analysis(
         # the Artist Hub backend (imported as top-level modules by the panel)
         "pipeline_state", "pipeline_auth", "pipeline_artifacts", "pipeline_resolve",
         "pipeline_naming", "pipeline_silo", "pipeline_paths", "hub_client",
+        # Seed Image Edit's render core (imported bare by seed_image_edit)
+        "cine_cam",
         # direct-mode Postgres driver (DirectBackend on a drive-connected machine)
         "psycopg2", "psycopg2._psycopg", "psycopg2.extras",
         # gated CLI tools — run in-process via the exe's --tool self-invoke
