@@ -23,7 +23,11 @@ import threading
 # Every subprocess call to a console app (ffmpeg.exe) then causes Windows
 # to spawn a new console window for it. Fix: allocate one hidden console
 # at startup — all subprocesses inherit it silently.
-if sys.platform == "win32" and getattr(sys, "frozen", False):
+# NOTE: skip this in --mcp mode — allocating a console would steal the stdin/stdout
+# PIPE that Claude connected for the MCP stdio transport (the server would then read
+# the hidden console instead of Claude, i.e. "not running").
+_MCP_MODE = (len(sys.argv) >= 2 and sys.argv[1] == "--mcp")
+if sys.platform == "win32" and getattr(sys, "frozen", False) and not _MCP_MODE:
     import ctypes
     ctypes.windll.kernel32.AllocConsole()
     _hwnd = ctypes.windll.kernel32.GetConsoleWindow()
@@ -735,6 +739,30 @@ def _run_mcp() -> None:
     `SeedViewer.exe --mcp` by the artist's Claude (Desktop / Code). Mirrors _run_tool:
     load the artist's env, put seed_viewer/ on sys.path so the bundled pipeline modules
     (hub_client, pipeline_*) resolve, then hand control to the server."""
+    # A windowed PyInstaller build has no console, so the C runtime leaves sys.stdin/
+    # sys.stdout unusable for the pipes Claude connected. Rebind them to the inherited
+    # OS standard handles so the JSON-RPC protocol can actually read/write.
+    if getattr(sys, "frozen", False):
+        import io
+        try:
+            if sys.platform == "win32":
+                import ctypes
+                import msvcrt
+                k32 = ctypes.windll.kernel32
+                fd_in = msvcrt.open_osfhandle(k32.GetStdHandle(-10), os.O_RDONLY)   # STD_INPUT
+                fd_out = msvcrt.open_osfhandle(k32.GetStdHandle(-11), 0)            # STD_OUTPUT
+                sys.stdin = io.TextIOWrapper(io.FileIO(fd_in, "r"), encoding="utf-8")
+                sys.stdout = io.TextIOWrapper(io.FileIO(fd_out, "w"), encoding="utf-8", newline="\n")
+                try:
+                    fd_err = msvcrt.open_osfhandle(k32.GetStdHandle(-12), 0)        # STD_ERROR
+                    sys.stderr = io.TextIOWrapper(io.FileIO(fd_err, "w"), encoding="utf-8", newline="\n")
+                except Exception:
+                    pass
+            else:
+                sys.stdin = io.TextIOWrapper(io.FileIO(0, "r"), encoding="utf-8")
+                sys.stdout = io.TextIOWrapper(io.FileIO(1, "w"), encoding="utf-8", newline="\n")
+        except Exception:
+            pass
     try:
         from seed_viewer import paths as _paths  # noqa: F401  (loads ~/.seed-viewer.env)
     except Exception:
