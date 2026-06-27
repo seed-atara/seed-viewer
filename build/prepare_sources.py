@@ -187,8 +187,10 @@ _PIPELINE_DATA = ["task_spec.json", "agents.json"]
 _CLI_TOOLS = ["beeble_submit.py", "magnific_submit.py"]
 
 # Self-contained "module" tools copied verbatim into seed_viewer/ (they ship their
-# own launch() and import only PySide6/numpy/Pillow, so no import patching needed).
-_MODULE_TOOLS = ["seed_image_edit.py", "cine_cam.py"]
+# own launch()/main() and resolve sibling modules via sys.path, so no patching needed).
+# mcp_server.py is the pipeline MCP server run by `SeedViewer.exe --mcp` (stdlib-only;
+# imports the bundled hub_client/pipeline_* as top-level, same as the Artist Hub backend).
+_MODULE_TOOLS = ["seed_image_edit.py", "cine_cam.py", "mcp_server.py"]
 
 
 def _copy_pipeline(source_repo: Path, dry_run: bool) -> None:

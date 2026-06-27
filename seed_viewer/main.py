@@ -37,7 +37,7 @@ from PySide6.QtCore import Qt, Signal, QObject, QThread, QTimer
 from PySide6.QtGui import QFont, QColor, QPalette
 from PySide6.QtWidgets import (
     QApplication, QDialog, QDialogButtonBox, QFormLayout,
-    QFrame, QHBoxLayout, QLabel, QLineEdit, QMainWindow,
+    QFrame, QHBoxLayout, QLabel, QLineEdit, QMainWindow, QMessageBox,
     QPlainTextEdit, QPushButton, QScrollArea,
     QSizePolicy, QVBoxLayout, QWidget,
 )
@@ -250,6 +250,13 @@ class SettingsDialog(QDialog):
                        "Saved to ~/.seed-viewer.env")
         note.setStyleSheet(f"color: {TEXT_SEC}; font-size: 11px;")
 
+        connect_btn = QPushButton("🔌  Connect to Claude (pipeline MCP)")
+        connect_btn.setToolTip("Register this app as an MCP server so your Claude (Desktop / Code) "
+                               "can drive the pipeline. Set your User above and Save first.")
+        connect_btn.setStyleSheet(f"background: {CARD_BG}; color: {OK_COL}; "
+                                  f"border: 1px solid {OK_COL}; border-radius: 4px; padding: 7px 14px;")
+        connect_btn.clicked.connect(self._connect_claude)
+
         btns = QDialogButtonBox(QDialogButtonBox.Save | QDialogButtonBox.Cancel)
         btns.accepted.connect(self._save)
         btns.rejected.connect(self.reject)
@@ -262,7 +269,48 @@ class SettingsDialog(QDialog):
         vbox.setSpacing(16)
         vbox.addLayout(form)
         vbox.addWidget(note)
+        vbox.addWidget(connect_btn)
         vbox.addWidget(btns)
+
+    def _connect_claude(self) -> None:
+        """Register SeedViewer as an MCP server in the artist's Claude Desktop config, and
+        show the Claude Code one-liner. The server runs via `SeedViewer.exe --mcp`."""
+        import json
+        import platform
+        if getattr(sys, "frozen", False):
+            command, args, cwd = sys.executable, ["--mcp"], None
+        else:                                   # dev: re-invoke the launcher module
+            command, args = sys.executable, ["-m", "seed_viewer.main", "--mcp"]
+            cwd = str(Path(__file__).resolve().parent.parent)
+        home = Path.home(); sysname = platform.system()
+        if sysname == "Windows":
+            cfg = Path(os.environ.get("APPDATA", str(home / "AppData/Roaming"))) / "Claude" / "claude_desktop_config.json"
+        elif sysname == "Darwin":
+            cfg = home / "Library" / "Application Support" / "Claude" / "claude_desktop_config.json"
+        else:
+            cfg = home / ".config" / "Claude" / "claude_desktop_config.json"
+        data = {}
+        if cfg.exists():
+            try:
+                data = json.loads(cfg.read_text(encoding="utf-8"))
+            except Exception:
+                data = {}
+        entry = {"command": command, "args": args}
+        if cwd:
+            entry["cwd"] = cwd
+        data.setdefault("mcpServers", {})["seed-pipeline"] = entry
+        try:
+            cfg.parent.mkdir(parents=True, exist_ok=True)
+            cfg.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        except Exception as e:
+            QMessageBox.warning(self, "Connect to Claude", f"Couldn't write config:\n{e}")
+            return
+        code_line = "claude mcp add seed-pipeline -- " + " ".join([command] + args)
+        QMessageBox.information(
+            self, "Connected to Claude",
+            f"Added 'seed-pipeline' to Claude Desktop:\n{cfg}\n\n"
+            f"Restart Claude Desktop to load it, then ask it “what shots am I assigned?”\n\n"
+            f"For Claude Code instead, run:\n{code_line}")
 
     def _save(self) -> None:
         env_path = Path.home() / ".seed-viewer.env"
@@ -682,7 +730,24 @@ def _prompt_update(win, latest):
         updater.run_update_and_quit(QApplication.instance())
 
 
+def _run_mcp() -> None:
+    """Run the pipeline MCP server over stdio (no Qt). The bundled exe is launched as
+    `SeedViewer.exe --mcp` by the artist's Claude (Desktop / Code). Mirrors _run_tool:
+    load the artist's env, put seed_viewer/ on sys.path so the bundled pipeline modules
+    (hub_client, pipeline_*) resolve, then hand control to the server."""
+    try:
+        from seed_viewer import paths as _paths  # noqa: F401  (loads ~/.seed-viewer.env)
+    except Exception:
+        pass
+    sys.path.insert(0, str(HERE))
+    importlib.import_module("seed_viewer.mcp_server").main()
+
+
 def main():
+    # Frozen exe self-invokes for the pipeline MCP server: SeedViewer.exe --mcp
+    if len(sys.argv) >= 2 and sys.argv[1] == "--mcp":
+        _run_mcp()
+        return
     # Frozen exe self-invokes for bundled CLI tools: SeedViewer.exe --tool beeble_submit ...
     if len(sys.argv) >= 3 and sys.argv[1] == "--tool":
         _run_tool(sys.argv[2], sys.argv[3:])
