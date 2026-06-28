@@ -28,3 +28,13 @@ seed_viewer/task_spec.json
 seed_viewer/agents.json
 seed_viewer/comfy_workflows/
 seed_viewer/hub_client.py
+# gated CLI / module tools (private — bundled from seed-film at build time)
+seed_viewer/beeble_submit.py
+seed_viewer/magnific_submit.py
+seed_viewer/mcp_server.py
+seed_viewer/seed_image_edit.py
+seed_viewer/cine_cam.py
+# client-delivery backend (private)
+seed_viewer/deliver_stills.py
+seed_viewer/aspera_send.py
+seed_viewer/aspera_pull.py
