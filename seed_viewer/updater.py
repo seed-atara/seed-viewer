@@ -125,18 +125,28 @@ def _win_script(root: Path) -> str:
 
 
 def _mac_script(root: Path) -> str:
+    # Mirror the Windows hardening: log everything, fail LOUDLY (a dialog, not a silent
+    # no-op), copy the bundle with `ditto` (the correct macOS bundle copy), and STRIP THE
+    # QUARANTINE off the freshly-downloaded app — otherwise Gatekeeper blocks the relaunch
+    # and it looks like "nothing happened".
     app = str(root)
+    fail = ('osascript -e \'display alert "Seed Viewer update failed" message "%s See '
+            '$TMPDIR/seedviewer_update.log."\' >/dev/null 2>&1; exit 1')
     sh = Path(tempfile.gettempdir()) / "seedviewer_update.sh"
     sh.write_text(
         "#!/bin/sh\n"
+        'LOG="$TMPDIR/seedviewer_update.log"\n'
+        f'echo "[seed update] $(date) app={app}" > "$LOG"\n'
         "sleep 2\n"
         'DMG="$TMPDIR/SeedViewer-mac.dmg"\n'
-        f'curl -L -o "$DMG" "{MAC_ASSET}" || exit 1\n'
-        'MNT=$(hdiutil attach "$DMG" -nobrowse 2>/dev/null | grep -o "/Volumes/.*" | head -1)\n'
-        '[ -z "$MNT" ] && exit 1\n'
+        f'curl -L -o "$DMG" "{MAC_ASSET}" >> "$LOG" 2>&1 || {{ {fail % "Download failed."} ; }}\n'
+        'MNT=$(hdiutil attach "$DMG" -nobrowse 2>>"$LOG" | grep -o "/Volumes/.*" | head -1)\n'
+        f'[ -z "$MNT" ] && {{ {fail % "Could not mount the disk image."} ; }}\n'
         f'rm -rf "{app}"\n'
-        f'cp -R "$MNT/SeedViewer.app" "{app}"\n'
+        f'ditto "$MNT/SeedViewer.app" "{app}" >> "$LOG" 2>&1 || {{ hdiutil detach "$MNT" >/dev/null 2>&1; {fail % "Install failed (check folder permissions)."} ; }}\n'
+        f'xattr -dr com.apple.quarantine "{app}" 2>/dev/null\n'
         'hdiutil detach "$MNT" >/dev/null 2>&1\n'
+        'echo "[done]" >> "$LOG"\n'
         f'open "{app}"\n',
         encoding="utf-8")
     os.chmod(sh, 0o755)
