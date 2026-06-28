@@ -88,26 +88,37 @@ def run_update_and_quit(app=None) -> None:
 
 
 def _win_script(root: Path) -> str:
+    # Replace the install IN PLACE with robocopy /MIR instead of "rmdir the dir + move the
+    # new one in". The old approach failed for many users: rmdir of a just-killed app's dir
+    # is often blocked (handles not released / AV lock) -> the script bailed and the app was
+    # never updated (it just re-prompts); and `move` of a directory across drives silently
+    # fails. robocopy mirrors file-by-file, works across volumes, retries locked files, and
+    # never needs to delete the parent dir. A log + pause-on-failure means it's never a
+    # silent "nothing happened".
     dest = str(root)
     bat = Path(tempfile.gettempdir()) / "seedviewer_update.bat"
     bat.write_text(
         "@echo off\r\n"
+        'set "LOG=%TEMP%\\seedviewer_update.log"\r\n'
+        'echo [seed update] %date% %time%  dest="' + dest + '" > "%LOG%"\r\n'
         "ping -n 3 127.0.0.1 >nul\r\n"
         "taskkill /f /im SeedViewer.exe >nul 2>&1\r\n"
-        "ping -n 2 127.0.0.1 >nul\r\n"
+        "ping -n 4 127.0.0.1 >nul\r\n"          # let the OS release the exe handle
         'set "ZIP=%TEMP%\\SeedViewer-win.zip"\r\n'
-        f'curl -L -o "%ZIP%" "{WIN_ASSET}"\r\n'
-        "if errorlevel 1 exit /b 1\r\n"
+        f'echo Downloading... >> "%LOG%"\r\n'
+        f'curl -L -o "%ZIP%" "{WIN_ASSET}" >> "%LOG%" 2>&1\r\n'
+        'if errorlevel 1 ( echo DOWNLOAD FAILED >> "%LOG%" & echo Update download failed - see %LOG% & pause & exit /b 1 )\r\n'
         'set "STAGE=%TEMP%\\sv_update_stage"\r\n'
         'rmdir /s /q "%STAGE%" 2>nul\r\n'
         'mkdir "%STAGE%"\r\n'
-        'tar -xf "%ZIP%" -C "%STAGE%"\r\n'
-        f'rmdir /s /q "{dest}" 2>nul\r\n'
-        # retry once if the dir was still locked, so the move never nests
-        f'if exist "{dest}" ( ping -n 3 127.0.0.1 >nul & rmdir /s /q "{dest}" 2>nul )\r\n'
-        f'if exist "{dest}" exit /b 1\r\n'
-        f'move "%STAGE%\\SeedViewer" "{dest}" >nul\r\n'
+        'tar -xf "%ZIP%" -C "%STAGE%" >> "%LOG%" 2>&1\r\n'
+        'if not exist "%STAGE%\\SeedViewer\\SeedViewer.exe" ( echo EXTRACT FAILED >> "%LOG%" & echo Update extract failed - see %LOG% & pause & exit /b 1 )\r\n'
+        f'echo Installing to "{dest}" >> "%LOG%"\r\n'
+        f'robocopy "%STAGE%\\SeedViewer" "{dest}" /MIR /R:5 /W:2 /NFL /NDL /NJH /NJS >> "%LOG%" 2>&1\r\n'
+        # robocopy: exit codes 0-7 are success, 8+ are failure
+        'if %ERRORLEVEL% GEQ 8 ( echo INSTALL FAILED %ERRORLEVEL% >> "%LOG%" & echo Update install failed - see %LOG% & pause & exit /b 1 )\r\n'
         'rmdir /s /q "%STAGE%" 2>nul\r\n'
+        'echo [done] >> "%LOG%"\r\n'
         f'start "" "{dest}\\SeedViewer.exe"\r\n',
         encoding="utf-8")
     return str(bat)
