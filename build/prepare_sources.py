@@ -186,6 +186,11 @@ _PIPELINE_DATA = ["task_spec.json", "agents.json"]
 # --tool self-invoke. Gitignored (not committed to the public repo).
 _CLI_TOOLS = ["beeble_submit.py", "magnific_submit.py"]
 
+# Client-delivery backend — imported (lazily) by mcp_server.py's stage_delivery / send_delivery
+# tools. Self-contained: deliver_stills uses only PIL + bundled pipeline_*; aspera_* are
+# stdlib-only (the actual Aspera CLI is external, so send degrades cleanly where it's absent).
+_DELIVERY_BACKEND = ["deliver_stills.py", "aspera_send.py", "aspera_pull.py"]
+
 # Self-contained "module" tools copied verbatim into seed_viewer/ (they ship their
 # own launch()/main() and resolve sibling modules via sys.path, so no patching needed).
 # mcp_server.py is the pipeline MCP server run by `SeedViewer.exe --mcp` (stdlib-only;
@@ -197,7 +202,7 @@ def _copy_pipeline(source_repo: Path, dry_run: bool) -> None:
     """Bundle the Artist Hub panel + its backend into seed_viewer/ (gitignored)."""
     jobs = [(source_repo / _PIPELINE_PANEL, SV_PKG / "pipeline_panel.py")]
     jobs += [(source_repo / m, SV_PKG / m)
-             for m in _PIPELINE_BACKEND + _PIPELINE_DATA + _CLI_TOOLS + _MODULE_TOOLS]
+             for m in _PIPELINE_BACKEND + _PIPELINE_DATA + _CLI_TOOLS + _MODULE_TOOLS + _DELIVERY_BACKEND]
     for src, dst in jobs:
         if not src.exists():
             print(f"  WARN: {src.name} not found — skip (artist hub may not load)")

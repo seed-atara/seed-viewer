@@ -50,6 +50,8 @@ a = Analysis(
         "pipeline_naming", "pipeline_silo", "pipeline_paths", "hub_client",
         # Seed Image Edit's render core (imported bare by seed_image_edit)
         "cine_cam",
+        # client-delivery backend — imported bare (lazily) by mcp_server's stage/send tools
+        "deliver_stills", "aspera_send", "aspera_pull",
         # direct-mode Postgres driver (DirectBackend on a drive-connected machine)
         "psycopg2", "psycopg2._psycopg", "psycopg2.extras",
         # gated CLI tools — run in-process via the exe's --tool self-invoke
