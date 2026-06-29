@@ -556,6 +556,14 @@ class LauncherWindow(QMainWindow):
         title.setFont(_tf)
         title.setStyleSheet(f"color: {CY};")
 
+        # running version, straight up — stamped into the build by CI ('0.0.0' from source)
+        from seed_viewer import updater
+        _ver = updater.installed_version()
+        _vtext = _ver if str(_ver).startswith("v") else f"v{_ver}"
+        self.setWindowTitle(f"SEEDSTUDIO {_vtext}")
+        ver_lbl = QLabel(_vtext)
+        ver_lbl.setStyleSheet(f"color: {TEXT_SEC}; font-size: 12px; padding-top: 12px;")
+
         ok = cfg["shots_exist"] and cfg["db_found"]
         status_parts = []
         if not cfg["shots_exist"]:
@@ -577,6 +585,7 @@ class LauncherWindow(QMainWindow):
 
         header_row = QHBoxLayout()
         header_row.addWidget(title)
+        header_row.addWidget(ver_lbl)
         header_row.addStretch()
         header_row.addWidget(gear)
 
