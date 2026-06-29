@@ -142,21 +142,12 @@ TOOLS: list[dict] = [
     },
     {
         "kind":    "module",
-        "key":     "seed_gen",
-        "label":   "Seed Generate",
-        "desc":    "AI video (Seedance) + image (Seedream) · pipeline frames as input · key built-in",
-        "module":  "seed_viewer.seed_gen",
+        "key":     "seed_studio",
+        "label":   "Seed Studio",
+        "desc":    "Generate (Seedance·Seedream) + Animate (Beeble) · cached playback · auto-prompt/mask · pipeline in→out",
+        "module":  "seed_viewer.seed_studio",
         "fn":      "launch",
         "accent":  "#00E5FF",
-    },
-    {
-        "kind":    "module",
-        "key":     "seed_relight",
-        "label":   "Seed Relight",
-        "desc":    "Beeble · relight · delight (PBR passes) · background · Canvas · mask tool · version compare",
-        "module":  "seed_viewer.seed_relight",
-        "fn":      "launch",
-        "accent":  "#06D6A0",
     },
 ]
 
