@@ -750,11 +750,34 @@ def _run_mcp() -> None:
     importlib.import_module("seed_viewer.mcp_server").main()
 
 
+def _install_crash_log():
+    """Capture hard crashes (incl. segfaults / fatal Qt errors) + uncaught Python exceptions
+    to a log file, so 'it just crashed' becomes diagnosable."""
+    import faulthandler
+    from pathlib import Path
+    try:
+        log = Path.home() / "seedstudio_crash.log"
+        _f = open(log, "a", buffering=1, encoding="utf-8")
+        faulthandler.enable(file=_f)          # dumps the C stack on a fatal signal
+        import datetime
+        _f.write(f"\n=== session {datetime.datetime.now().isoformat(timespec='seconds')} ===\n")
+
+        def _hook(t, v, tb):
+            import traceback
+            _f.write("UNCAUGHT EXCEPTION:\n")
+            traceback.print_exception(t, v, tb, file=_f)
+            sys.__excepthook__(t, v, tb)
+        sys.excepthook = _hook
+    except Exception:
+        pass
+
+
 def main():
     # Frozen exe self-invokes for the pipeline MCP server: SeedViewer.exe --mcp
     if len(sys.argv) >= 2 and sys.argv[1] == "--mcp":
         _run_mcp()
         return
+    _install_crash_log()
     # Frozen exe self-invokes for bundled CLI tools: SeedViewer.exe --tool beeble_submit ...
     if len(sys.argv) >= 3 and sys.argv[1] == "--tool":
         _run_tool(sys.argv[2], sys.argv[3:])
