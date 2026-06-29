@@ -50,3 +50,5 @@ seed_viewer/seed_beeble_key.py
 seed_viewer/seed_studio.py
 seed_viewer/seed_player.py
 seed_viewer/auto_prompt.py
+seed_viewer/seg_figure.py
+seed_viewer/u2netp.onnx

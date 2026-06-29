@@ -6,3 +6,4 @@ Pillow>=10.0
 numpy>=1.24
 requests>=2.31   # bundled Beeble/Magnific submit tools
 psycopg2-binary>=2.9   # direct-mode Postgres driver (Artist Hub on a drive-connected machine)
+onnxruntime>=1.17      # local figure segmentation (u2netp) for the mask tool

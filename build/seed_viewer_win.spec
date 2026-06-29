@@ -30,6 +30,8 @@ a = Analysis(
         # Artist Hub data files — must sit next to the bundled backend modules.
         (str(SV / "task_spec.json"), "seed_viewer"),
         (str(SV / "agents.json"),    "seed_viewer"),
+        # local figure-segmentation model (u2netp, 4.7MB) -> _MEIPASS/u2netp.onnx
+        *( [(str(SV / "u2netp.onnx"), ".")] if (SV / "u2netp.onnx").exists() else [] ),
     ],
     hiddenimports=[
         "PySide6.QtCore",
@@ -60,6 +62,8 @@ a = Analysis(
         # reuse sibling modules via bare imports, so those must be importable bare too.
         "beeble_client", "seed_beeble_key", "seed_gen", "seed_relight",
         "seed_studio", "seed_player", "auto_prompt",
+        # local figure segmentation (u2netp via onnxruntime) — instant on-device matte
+        "seg_figure", "onnxruntime",
         # direct-mode Postgres driver (DirectBackend on a drive-connected machine)
         "psycopg2", "psycopg2._psycopg", "psycopg2.extras",
         "requests",

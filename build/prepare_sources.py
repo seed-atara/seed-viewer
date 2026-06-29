@@ -181,7 +181,8 @@ _PIPELINE_BACKEND = [
     "pipeline_paths.py", "pipeline_naming.py", "pipeline_state.py", "pipeline_silo.py",
     "pipeline_resolve.py", "pipeline_artifacts.py", "pipeline_auth.py", "hub_client.py",
 ]
-_PIPELINE_DATA = ["task_spec.json", "agents.json", "omitted_shots.json"]
+_PIPELINE_DATA = ["task_spec.json", "agents.json", "omitted_shots.json",
+                  "u2netp.onnx"]   # local figure-seg model (downloaded into the source repo in CI)
 # Legacy gated CLI tools — RETIRED from the launcher (the "Tools" subsection was nuked;
 # Beeble now lives in the Seed Relight module app). Kept empty so the bundle drops them.
 _CLI_TOOLS: list[str] = []
@@ -196,7 +197,7 @@ _DELIVERY_BACKEND = ["deliver_stills.py", "aspera_send.py", "aspera_pull.py"]
 # mcp_server.py is the pipeline MCP server run by `SeedViewer.exe --mcp` (stdlib-only;
 # imports the bundled hub_client/pipeline_* as top-level, same as the Artist Hub backend).
 _MODULE_TOOLS = ["seed_image_edit.py", "cine_cam.py", "mcp_server.py", "seed_gen.py", "seed_relight.py",
-                 "seed_studio.py", "seed_player.py", "auto_prompt.py"]
+                 "seed_studio.py", "seed_player.py", "auto_prompt.py", "seg_figure.py"]
 
 # Generative backend (Seedance video / Seedream image) — shared by seed_gen + the MCP.
 # seed_ark_key.py holds the INTERNAL api key; it is gitignored in BOTH repos and written
