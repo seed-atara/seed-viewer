@@ -140,6 +140,15 @@ TOOLS: list[dict] = [
         "fn":      "launch",
         "accent":  "#FFB347",
     },
+    {
+        "kind":    "module",
+        "key":     "seed_gen",
+        "label":   "Seed Generate",
+        "desc":    "AI video (Seedance) + image (Seedream) · pipeline frames as input · key built-in",
+        "module":  "seed_viewer.seed_gen",
+        "fn":      "launch",
+        "accent":  "#00E5FF",
+    },
     # ── CLI tools — gated (require permission in agents.json 'tools') ───────────
     {
         "kind":    "cli",

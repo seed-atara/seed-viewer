@@ -195,14 +195,21 @@ _DELIVERY_BACKEND = ["deliver_stills.py", "aspera_send.py", "aspera_pull.py"]
 # own launch()/main() and resolve sibling modules via sys.path, so no patching needed).
 # mcp_server.py is the pipeline MCP server run by `SeedViewer.exe --mcp` (stdlib-only;
 # imports the bundled hub_client/pipeline_* as top-level, same as the Artist Hub backend).
-_MODULE_TOOLS = ["seed_image_edit.py", "cine_cam.py", "mcp_server.py"]
+_MODULE_TOOLS = ["seed_image_edit.py", "cine_cam.py", "mcp_server.py", "seed_gen.py"]
+
+# Generative backend (Seedance video / Seedream image) — shared by seed_gen + the MCP.
+# seed_ark_key.py holds the INTERNAL api key; it is gitignored in BOTH repos and written
+# from the ARK_API_KEY GitHub secret in CI (see the build workflow). Copied if present so
+# local builds work too; the app degrades gracefully (and the env var still overrides).
+_GEN_BACKEND = ["seedance_client.py", "seed_ark_key.py"]
 
 
 def _copy_pipeline(source_repo: Path, dry_run: bool) -> None:
     """Bundle the Artist Hub panel + its backend into seed_viewer/ (gitignored)."""
     jobs = [(source_repo / _PIPELINE_PANEL, SV_PKG / "pipeline_panel.py")]
     jobs += [(source_repo / m, SV_PKG / m)
-             for m in _PIPELINE_BACKEND + _PIPELINE_DATA + _CLI_TOOLS + _MODULE_TOOLS + _DELIVERY_BACKEND]
+             for m in _PIPELINE_BACKEND + _PIPELINE_DATA + _CLI_TOOLS + _MODULE_TOOLS
+             + _DELIVERY_BACKEND + _GEN_BACKEND]
     for src, dst in jobs:
         if not src.exists():
             print(f"  WARN: {src.name} not found — skip (artist hub may not load)")

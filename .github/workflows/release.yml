@@ -29,6 +29,12 @@ jobs:
           token: ${{ secrets.SEED_FILM_TOKEN }}
           path: _seed_film
 
+      - name: Write internal ARK key (Seedance/Seedream)
+        shell: bash
+        env:
+          ARK_API_KEY: ${{ secrets.ARK_API_KEY }}
+        run: python -c "import os;open('_seed_film/seed_ark_key.py','w').write('ARK_API_KEY = %r\n' % (os.environ.get('ARK_API_KEY') or ''))"
+
       - name: Set up Python 3.11
         uses: actions/setup-python@v5
         with:
@@ -81,6 +87,12 @@ jobs:
           repository: seed-atara/seed-film
           token: ${{ secrets.SEED_FILM_TOKEN }}
           path: _seed_film
+
+      - name: Write internal ARK key (Seedance/Seedream)
+        shell: bash
+        env:
+          ARK_API_KEY: ${{ secrets.ARK_API_KEY }}
+        run: python -c "import os;open('_seed_film/seed_ark_key.py','w').write('ARK_API_KEY = %r\n' % (os.environ.get('ARK_API_KEY') or ''))"
 
       - name: Set up Python 3.11
         uses: actions/setup-python@v5

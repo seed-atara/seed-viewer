@@ -43,6 +43,7 @@ a = Analysis(
         "seed_viewer.roto_align",
         "seed_viewer.pipeline_panel",
         "seed_viewer.seed_image_edit",
+        "seed_viewer.seed_gen",     # Seed Generate (Seedance/Seedream) — module tool
         "seed_viewer.mcp_server",   # pipeline MCP server, run via SeedViewer.exe --mcp (stdlib-only)
         "seed_viewer.updater", "seed_viewer._buildinfo",
         # the Artist Hub backend (imported as top-level modules by the panel)
@@ -52,6 +53,8 @@ a = Analysis(
         "cine_cam",
         # client-delivery backend — imported bare (lazily) by mcp_server's stage/send tools
         "deliver_stills", "aspera_send", "aspera_pull",
+        # generative backend — Seedance/Seedream client + internal key (bare imports)
+        "seedance_client", "seed_ark_key",
         # direct-mode Postgres driver (DirectBackend on a drive-connected machine)
         "psycopg2", "psycopg2._psycopg", "psycopg2.extras",
         # gated CLI tools — run in-process via the exe's --tool self-invoke
