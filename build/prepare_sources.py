@@ -181,7 +181,7 @@ _PIPELINE_BACKEND = [
     "pipeline_paths.py", "pipeline_naming.py", "pipeline_state.py", "pipeline_silo.py",
     "pipeline_resolve.py", "pipeline_artifacts.py", "pipeline_auth.py", "hub_client.py",
 ]
-_PIPELINE_DATA = ["task_spec.json", "agents.json"]
+_PIPELINE_DATA = ["task_spec.json", "agents.json", "omitted_shots.json"]
 # Legacy gated CLI tools — RETIRED from the launcher (the "Tools" subsection was nuked;
 # Beeble now lives in the Seed Relight module app). Kept empty so the bundle drops them.
 _CLI_TOOLS: list[str] = []
