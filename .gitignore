@@ -42,3 +42,7 @@ seed_viewer/aspera_pull.py
 seed_viewer/seed_gen.py
 seed_viewer/seedance_client.py
 seed_viewer/seed_ark_key.py
+# beeble backend (private — seed_beeble_key holds the API key, NEVER commit)
+seed_viewer/seed_relight.py
+seed_viewer/beeble_client.py
+seed_viewer/seed_beeble_key.py

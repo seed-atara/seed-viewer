@@ -182,9 +182,9 @@ _PIPELINE_BACKEND = [
     "pipeline_resolve.py", "pipeline_artifacts.py", "pipeline_auth.py", "hub_client.py",
 ]
 _PIPELINE_DATA = ["task_spec.json", "agents.json"]
-# Gated CLI tools bundled into seed_viewer/ and run in-process via the exe's
-# --tool self-invoke. Gitignored (not committed to the public repo).
-_CLI_TOOLS = ["beeble_submit.py", "magnific_submit.py"]
+# Legacy gated CLI tools — RETIRED from the launcher (the "Tools" subsection was nuked;
+# Beeble now lives in the Seed Relight module app). Kept empty so the bundle drops them.
+_CLI_TOOLS: list[str] = []
 
 # Client-delivery backend — imported (lazily) by mcp_server.py's stage_delivery / send_delivery
 # tools. Self-contained: deliver_stills uses only PIL + bundled pipeline_*; aspera_* are
@@ -195,7 +195,7 @@ _DELIVERY_BACKEND = ["deliver_stills.py", "aspera_send.py", "aspera_pull.py"]
 # own launch()/main() and resolve sibling modules via sys.path, so no patching needed).
 # mcp_server.py is the pipeline MCP server run by `SeedViewer.exe --mcp` (stdlib-only;
 # imports the bundled hub_client/pipeline_* as top-level, same as the Artist Hub backend).
-_MODULE_TOOLS = ["seed_image_edit.py", "cine_cam.py", "mcp_server.py", "seed_gen.py"]
+_MODULE_TOOLS = ["seed_image_edit.py", "cine_cam.py", "mcp_server.py", "seed_gen.py", "seed_relight.py"]
 
 # Generative backend (Seedance video / Seedream image) — shared by seed_gen + the MCP.
 # seed_ark_key.py holds the INTERNAL api key; it is gitignored in BOTH repos and written
@@ -203,13 +203,18 @@ _MODULE_TOOLS = ["seed_image_edit.py", "cine_cam.py", "mcp_server.py", "seed_gen
 # local builds work too; the app degrades gracefully (and the env var still overrides).
 _GEN_BACKEND = ["seedance_client.py", "seed_ark_key.py"]
 
+# Beeble backend (relight / PBR / background / Canvas) — shared by seed_relight + the MCP.
+# seed_beeble_key.py = INTERNAL key, gitignored both repos, written from the BEEBLE_API_KEY
+# GitHub secret in CI (empty if unset → tool degrades to a "set a key" state).
+_BEEBLE_BACKEND = ["beeble_client.py", "seed_beeble_key.py"]
+
 
 def _copy_pipeline(source_repo: Path, dry_run: bool) -> None:
     """Bundle the Artist Hub panel + its backend into seed_viewer/ (gitignored)."""
     jobs = [(source_repo / _PIPELINE_PANEL, SV_PKG / "pipeline_panel.py")]
     jobs += [(source_repo / m, SV_PKG / m)
              for m in _PIPELINE_BACKEND + _PIPELINE_DATA + _CLI_TOOLS + _MODULE_TOOLS
-             + _DELIVERY_BACKEND + _GEN_BACKEND]
+             + _DELIVERY_BACKEND + _GEN_BACKEND + _BEEBLE_BACKEND]
     for src, dst in jobs:
         if not src.exists():
             print(f"  WARN: {src.name} not found — skip (artist hub may not load)")

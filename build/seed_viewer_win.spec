@@ -44,6 +44,7 @@ a = Analysis(
         "seed_viewer.pipeline_panel",
         "seed_viewer.seed_image_edit",
         "seed_viewer.seed_gen",     # Seed Generate (Seedance/Seedream) — module tool
+        "seed_viewer.seed_relight", # Seed Relight (Beeble SwitchX) — module tool
         "seed_viewer.mcp_server",   # pipeline MCP server, run via SeedViewer.exe --mcp (stdlib-only)
         "seed_viewer.updater", "seed_viewer._buildinfo",
         # the Artist Hub backend (imported as top-level modules by the panel)
@@ -55,11 +56,12 @@ a = Analysis(
         "deliver_stills", "aspera_send", "aspera_pull",
         # generative backend — Seedance/Seedream client + internal key (bare imports)
         "seedance_client", "seed_ark_key",
+        # Beeble backend — SwitchX client + internal key (bare imports). seed_relight reuses
+        # seed_gen's widgets via a bare `import seed_gen`, so seed_gen must be importable bare too.
+        "beeble_client", "seed_beeble_key", "seed_gen",
         # direct-mode Postgres driver (DirectBackend on a drive-connected machine)
         "psycopg2", "psycopg2._psycopg", "psycopg2.extras",
-        # gated CLI tools — run in-process via the exe's --tool self-invoke
-        "seed_viewer.beeble_submit", "seed_viewer.magnific_submit",
-        "beeble_submit", "magnific_submit", "requests",
+        "requests",
         # stdlib submodules hub_client uses that nothing else pulls in (PyInstaller
         # can miss these → "No module named 'http.cookiejar'" at panel load).
         "http.cookiejar", "urllib.request", "urllib.parse", "urllib.error",

@@ -149,35 +149,14 @@ TOOLS: list[dict] = [
         "fn":      "launch",
         "accent":  "#00E5FF",
     },
-    # ── CLI tools — gated (require permission in agents.json 'tools') ───────────
     {
-        "kind":    "cli",
-        "key":     "beeble",
-        "label":   "Beeble Submit",
-        "desc":    "AI background removal · Beeble SwitchX",
-        "section": "tools",
-        "tool_module": "beeble_submit",
-        "args": [
-            {"flag": "--shot",        "label": "Shot",        "placeholder": "028_LMC_1200"},
-            {"flag": "--alpha-mode",  "label": "Alpha mode",  "placeholder": "auto"},
-            {"flag": "--prompt",      "label": "Prompt",      "placeholder": "(optional)"},
-            {"flag": "--auto-prompt", "label": "Auto prompt", "type": "bool"},
-            {"flag": "--poll",        "label": "Poll pending","type": "bool"},
-        ],
+        "kind":    "module",
+        "key":     "seed_relight",
+        "label":   "Seed Relight",
+        "desc":    "Beeble · relight · delight (PBR passes) · background · Canvas · mask tool · version compare",
+        "module":  "seed_viewer.seed_relight",
+        "fn":      "launch",
         "accent":  "#06D6A0",
-    },
-    {
-        "kind":    "cli",
-        "key":     "magnific",
-        "label":   "Magnific Upres",
-        "desc":    "Up-res / restyle · Magnific",
-        "section": "tools",
-        "tool_module": "magnific_submit",
-        "args": [
-            {"flag": "--shot",   "label": "Shot",    "placeholder": "028_LMC_1200"},
-            {"flag": "--poll",   "label": "Poll",    "type": "bool"},
-        ],
-        "accent":  "#FF6AC2",
     },
 ]
 
@@ -615,21 +594,12 @@ class LauncherWindow(QMainWindow):
         header.addLayout(header_row)
         header.addWidget(status)
 
-        # Tool cards — primary tools first, then a "Tools" subsection (utilities;
-        # more tools land here over time).
+        # Tool cards — flagship module tools (the legacy gated CLI "Tools" subsection
+        # was retired; Beeble now lives in the Seed Relight app).
         cards_col = QVBoxLayout()
         cards_col.setSpacing(10)
-        primary = [t for t in TOOLS if t.get("section") != "tools" and _user_allowed(t)]
-        tools   = [t for t in TOOLS if t.get("section") == "tools" and _user_allowed(t)]
-        for tool in primary:
+        for tool in [t for t in TOOLS if _user_allowed(t)]:
             cards_col.addWidget(ToolCard(tool))
-        if tools:
-            sub = QLabel("◢ TOOLS")
-            sub.setStyleSheet(f"color: {CY}; font-weight: bold; font-size: 11px; "
-                              f"letter-spacing: 2px; padding: 12px 2px 2px;")
-            cards_col.addWidget(sub)
-            for tool in tools:
-                cards_col.addWidget(ToolCard(tool))
         cards_col.addStretch()
 
         cards_w = QWidget()
