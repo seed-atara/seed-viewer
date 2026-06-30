@@ -795,4 +795,8 @@ def main():
 
 
 if __name__ == "__main__":
+    # Must run BEFORE anything else: lets a frozen build spawn multiprocessing workers
+    # (e.g. parallel clip rendering) without re-bootstrapping the whole GUI / fork-bombing.
+    import multiprocessing
+    multiprocessing.freeze_support()
     main()
