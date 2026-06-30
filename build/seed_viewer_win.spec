@@ -61,7 +61,7 @@ a = Analysis(
         # Beeble backend — SwitchX client + internal key (bare imports). seed_relight/seed_studio
         # reuse sibling modules via bare imports, so those must be importable bare too.
         "beeble_client", "seed_beeble_key", "seed_gen", "seed_relight",
-        "seed_studio", "seed_player", "auto_prompt",
+        "seed_studio", "seed_player", "auto_prompt", "seed_image_edit",
         # local figure segmentation (u2netp via onnxruntime) — instant on-device matte
         "seg_figure", "onnxruntime",
         # direct-mode Postgres driver (DirectBackend on a drive-connected machine)
