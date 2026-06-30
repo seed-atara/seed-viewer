@@ -131,15 +131,8 @@ TOOLS: list[dict] = [
         "fn":      "launch",
         "accent":  "#7C4DFF",
     },
-    {
-        "kind":    "module",
-        "key":     "image_edit",
-        "label":   "Seed Image Edit",
-        "desc":    "Template renders · sliders + code snippets · Make Cinematic · Color Grade",
-        "module":  "seed_viewer.seed_image_edit",
-        "fn":      "launch",
-        "accent":  "#FFB347",
-    },
+    # (Seed Image Edit retired as a standalone tile — it now lives as the "✦ Finish" tab
+    #  inside Seed Studio. seed_image_edit.py is still bundled and imported by the studio.)
     {
         "kind":    "module",
         "key":     "seed_studio",
