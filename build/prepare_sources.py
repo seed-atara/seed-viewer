@@ -55,9 +55,11 @@ def _patch_imports(src: str, is_roto: bool = False) -> str:
         "from seed_viewer.paths import",
         src,
     )
+    # Handle both  `import pipeline_paths`  and  `import pipeline_paths as X`
+    # (the alias form must keep X, else we'd emit `... as pipeline_paths as X` — a SyntaxError).
     src = re.sub(
-        r"import pipeline_paths\b",
-        "import seed_viewer.paths as pipeline_paths",
+        r"import pipeline_paths(\s+as\s+\w+)?",
+        lambda m: "import seed_viewer.paths" + (m.group(1) or " as pipeline_paths"),
         src,
     )
     # Patch DB_PATH so the bundled app reads shot_database.json from the drive,
