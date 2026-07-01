@@ -236,6 +236,31 @@ def _copy_pipeline(source_repo: Path, dry_run: bool) -> None:
             shutil.copy2(f, SV_PKG / "comfy_workflows" / f.name)
 
 
+def _verify_compiles() -> None:
+    """GUARD: fail the build if any copied/patched module won't compile.
+
+    The import-patcher and delivery-stripper rewrite source text, so a bad rewrite
+    can silently emit invalid Python (e.g. the `import X as Y as Z` double-`as`
+    that broke v0.6.23's viewer.py). PyInstaller only WARNS on an uncompilable
+    hiddenimport — it still ships an exe — so without this check the app breaks
+    only when a user clicks the tile. Compiling every bundled module here turns
+    that into a loud, immediate build failure.
+    """
+    mods = sorted(SV_PKG.glob("*.py"))
+    bad = []
+    for f in mods:
+        try:
+            compile(f.read_text(encoding="utf-8"), str(f), "exec")
+        except SyntaxError as e:
+            bad.append(f"{f.name}:{e.lineno}:{e.offset}: {e.msg}")
+    if bad:
+        print("\nERROR: bundled module(s) failed to compile — BUILD ABORTED:", file=sys.stderr)
+        for b in bad:
+            print("   " + b, file=sys.stderr)
+        sys.exit(1)
+    print(f"  verified: all {len(mods)} bundled seed_viewer modules compile OK")
+
+
 def prepare(source_repo: Path, dry_run: bool = False) -> None:
     if not source_repo.exists():
         sys.exit(f"ERROR: seed-film repo not found: {source_repo}")
@@ -281,6 +306,9 @@ def prepare(source_repo: Path, dry_run: bool = False) -> None:
             for f in font_src.glob("*.ttc"):
                 shutil.copy2(f, font_dst / f.name)
             print(f"  OK : fonts -> {font_dst}")
+
+    if not dry_run:
+        _verify_compiles()   # GUARD — abort the build now if any module is broken
 
     print("\nDone. Next steps:")
     print("  1. Review seed_viewer/viewer.py — check launch() class name")
