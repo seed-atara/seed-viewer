@@ -205,7 +205,7 @@ _MODULE_TOOLS = ["seed_image_edit.py", "cine_cam.py", "mcp_server.py", "seed_gen
 # seed_ark_key.py holds the INTERNAL api key; it is gitignored in BOTH repos and written
 # from the ARK_API_KEY GitHub secret in CI (see the build workflow). Copied if present so
 # local builds work too; the app degrades gracefully (and the env var still overrides).
-_GEN_BACKEND = ["seedance_client.py", "seed_ark_key.py"]
+_GEN_BACKEND = ["seedance_client.py", "seed_ark_key.py", "ark_assets.py"]
 
 # Beeble backend (relight / PBR / background / Canvas) — shared by seed_relight + the MCP.
 # seed_beeble_key.py = INTERNAL key, gitignored both repos, written from the BEEBLE_API_KEY
