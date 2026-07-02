@@ -98,17 +98,28 @@ LAYERS: dict[str, dict] = {
     "ffs":        {"label": "First Frame","globs": ["keyframes/ff/*.png","keyframes/ff/*.jpg",
                                                      "ff/V*/*.png","ff/V*/*.jpg",
                                                      "mp4/*_ff_*.png"],                                    "is_video": False},
-    "wai":        {"label": "GenAI (WAI)","globs": ["genai/*_wai_*.mp4","genai/*_bg_*.mp4",
+    "wai":        {"label": "GenAI (WAI)","globs": ["genai/V*/*.mp4","genai/V*/*.png","genai/V*/*.jpg",
+                                                     "genai/*_wai_*.mp4","genai/*_bg_*.mp4",
                                                      "genai/backgrounds/*.mp4","genai/backgrounds*.mp4",
                                                      "vfx/*_wai_V*.mp4","vfx/*_wai_*.mp4"],                 "is_video": True},
     "magnific":   {"label": "Magnific",   "globs": ["genai/magnific/*.mp4","genai/magnific*.mp4","upres/*.mp4"], "is_video": True},
     "style":      {"label": "Style",      "globs": ["genai/style/*.mp4","genai/style*.mp4"],               "is_video": True},
     "gfx":        {"label": "GFX",        "globs": ["genai/gfx/*.mp4","genai/gfx*.mp4"],                   "is_video": True},
-    "comp":       {"label": "Comp",       "globs": ["comp/V*/**/*.mp4","comp/*/*.mp4","comp/*.mp4"],       "is_video": True},
+    "comp":       {"label": "Comp",       "globs": ["comp/V*/**/*.mp4","comp/V*/**/*.mov","comp/V*/*.png",
+                                                 "comp/V*/*.jpg","comp/*/*.mp4","comp/*.mp4"],          "is_video": True},
     "mask":       {"label": "Mask",       "globs": ["masks/*.mp4","masks/*_combined_*.mp4"],               "is_video": True},
-    "layout":     {"label": "Layout",     "globs": ["layout/**/*.mp4","layout/*.mp4"],                     "is_video": True},
+    # CANONICAL only: check-in publishes to layout/V###/<shot>_layout_v###.{png,mp4}.
+    # Resolve exactly that (like 'comp' does with comp/V*/) so non-conformed legacy
+    # junk at the layout root (test renders, PSDs, frame dumps) is ignored — the
+    # whole point of conforming on check-in is that the viewer reads ONE clean path.
+    "layout":     {"label": "Layout",     "globs": ["layout/V*/*.mp4","layout/V*/*.mov","layout/V*/*.png",
+                                                 "layout/V*/*.jpg"], "is_video": True},
 }
-CASCADE_ORDER = ["comp", "wai", "ffs", "plate_hd", "plate"]
+# Video vs still is the FILE's truth, not the layer's — a 'layout' may be an mp4 OR a
+# checked-in PNG still. Resolution/thumbnailing keys off the actual extension so
+# whatever check-in publishes (png/jpg/mp4) "just works".
+_VIDEO_EXTS = {".mp4", ".mov", ".mxf", ".m4v", ".avi", ".webm", ".mkv"}
+CASCADE_ORDER = ["comp", "layout", "wai", "ffs", "plate_hd", "plate"]
 THUMB_W, THUMB_H = 160, 90    # 2-column grid (16:9, fits 2 per row in ~360px browser)
 
 CACHE_DIR = Path(tempfile.gettempdir()) / "ks_shot_viewer"
@@ -145,219 +156,42 @@ def _silent_kwargs() -> dict:
         kwargs["startupinfo"] = si
     return kwargs
 
-# ── SGI / Tron palette  (v06 spec) ───────────────────────────────────────────
+# ── SEED design system (tokens from seed_theme; mono identity for review) ────
+import seed_theme as _theme
+from seed_theme import C as _C
 
-C_DARK     = "#06080C"   # Background
-C_BAR      = "#0B0E14"   # Panels
-C_BAR2     = "#080A0F"   # Slightly darker
-C_BTN      = "#0F1520"   # Buttons
-C_FG       = "#E0F7FF"   # Text
-C_DIM      = "#6B7C8E"   # Muted
-C_DIM2     = "#1A1F2A"   # Borders
-C_CYAN     = "#00F0FF"   # Accent cyan   (active states)
-C_CYAN_DIM = "#003344"   # Dim cyan
-C_PURPLE   = "#9000FF"   # Accent purple (hover states)
-C_TEAL     = "#00e5cc"
-C_AMBER    = "#f4c542"
-C_AMBER2   = "#3a2800"
-C_GREEN    = "#1aff6a"
-C_RED      = "#ff4444"
-C_CA       = "#0a2a40"
-C_CB       = "#2a1400"
+C_DARK     = _C.BG0        # background
+C_BAR      = _C.BG1        # panels
+C_BAR2     = "#10151c"     # slightly deeper strip
+C_BTN      = _C.BG2        # buttons / inputs
+C_FG       = _C.TEXT
+C_DIM      = _C.TEXT_MUT   # readable secondary (was 2:1 contrast)
+C_DIM2     = _C.STROKE
+C_CYAN     = _C.ACCENT
+C_CYAN_DIM = _C.ACCENT_DIM
+C_PURPLE   = _C.ACCENT_HI  # hover accent (retired the purple)
+C_TEAL     = "#2dd4bf"
+C_AMBER    = _C.WARN
+C_AMBER2   = "#3a2c10"
+C_GREEN    = _C.OK
+C_RED      = _C.ERR
+C_CA       = _C.ACCENT_DIM # A-side tint
+C_CB       = "#3a2c10"     # B-side tint
 
-# ── QSS ───────────────────────────────────────────────────────────────────────
-
-QSS = f"""
+# ── QSS: the shared master sheet + the viewer's mono identity ─────────────────
+# The viewer is a technical instrument — it keeps a monospace face for codes,
+# timecode and frame counters (RV-style), on top of the shared SEED theme.
+QSS = _theme.QSS + f"""
 QMainWindow, QWidget {{
-    background: {C_DARK};
-    color: {C_FG};
-    font-family: "Share Tech Mono", "Consolas", "Iosevka Term", "Courier New", monospace;
+    font-family: "Share Tech Mono", "Cascadia Mono", "Consolas", monospace;
     font-size: 9pt;
 }}
-QMenuBar {{
-    background: {C_BAR};
-    color: {C_FG};
-    border-bottom: 1px solid {C_CYAN_DIM};
-    padding: 1px 0;
-    spacing: 0;
-}}
-QMenuBar::item {{
-    padding: 4px 10px;
-    background: transparent;
-}}
-QMenuBar::item:selected, QMenuBar::item:pressed {{
-    background: {C_DIM2};
-    color: {C_CYAN};
-}}
-QMenu {{
-    background: #0d1220;
-    color: {C_FG};
-    border: 1px solid {C_CYAN_DIM};
-    padding: 2px 0;
-}}
-QMenu::item {{
-    padding: 4px 28px 4px 14px;
-}}
-QMenu::item:selected {{
-    background: #003344;
-    color: {C_CYAN};
-}}
-QMenu::separator {{
-    height: 1px;
-    background: {C_CYAN_DIM};
-    margin: 2px 8px;
-}}
-QComboBox {{
-    background: #0d1220;
-    color: {C_CYAN};
-    border: 1px solid {C_CYAN_DIM};
-    border-radius: 0;
-    padding: 1px 6px;
-    min-height: 18px;
-}}
-QComboBox:hover {{ border-color: {C_CYAN}; }}
-QComboBox::drop-down {{
-    subcontrol-origin: padding;
-    subcontrol-position: right center;
-    width: 14px;
-    border-left: 1px solid {C_CYAN_DIM};
-    background: {C_BAR};
-}}
-QComboBox QAbstractItemView {{
-    background: #0d1220;
-    color: {C_FG};
-    border: 1px solid {C_CYAN_DIM};
-    selection-background-color: #003344;
-    selection-color: {C_CYAN};
-    outline: none;
-    padding: 2px;
-}}
-QPushButton {{
-    background: {C_BTN};
-    color: {C_FG};
-    border: 1px solid {C_DIM2};
-    padding: 2px 10px;
-    min-height: 18px;
-}}
-QPushButton:hover {{ border-color: {C_PURPLE}; color: {C_PURPLE}; }}
-QPushButton:pressed {{ background: #1a0030; border-color: {C_PURPLE}; }}
-QPushButton:checked {{ background: #001830; border-color: {C_CYAN}; color: {C_CYAN}; }}
+QListWidget {{ background: {C_DARK}; border: none; }}
+QListWidget::item {{ border: none; padding: 0; }}
+QListWidget::item:selected {{ background: {_C.ACCENT_DIM}; }}
+QListWidget::item:hover {{ background: {_C.BG2}; }}
 QRadioButton {{ color: {C_DIM}; spacing: 4px; }}
 QRadioButton:checked {{ color: {C_FG}; }}
-QRadioButton::indicator {{
-    width: 10px; height: 10px;
-    border: 1px solid {C_DIM};
-    border-radius: 5px;
-    background: {C_DARK};
-}}
-QRadioButton::indicator:checked {{
-    background: {C_CYAN};
-    border-color: {C_CYAN};
-}}
-QScrollBar:vertical {{
-    background: {C_BAR2};
-    width: 6px;
-    margin: 0;
-    border: none;
-}}
-QScrollBar::handle:vertical {{
-    background: {C_DIM2};
-    min-height: 24px;
-    border-radius: 3px;
-}}
-QScrollBar::handle:vertical:hover {{ background: {C_CYAN_DIM}; }}
-QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
-QScrollBar:horizontal {{
-    background: {C_BAR2};
-    height: 6px;
-    border: none;
-}}
-QScrollBar::handle:horizontal {{
-    background: {C_DIM2};
-    min-width: 24px;
-    border-radius: 3px;
-}}
-QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {{ width: 0; }}
-QSplitter::handle {{
-    background: {C_CYAN_DIM};
-}}
-QSplitter::handle:horizontal {{ width: 1px; }}
-QSplitter::handle:vertical {{ height: 1px; }}
-QListWidget {{
-    background: {C_DARK};
-    border: none;
-    outline: none;
-}}
-QListWidget::item {{ border: none; padding: 0; }}
-QListWidget::item:selected {{ background: #001a2a; }}
-QListWidget::item:hover {{ background: #0a0f18; }}
-QPlainTextEdit, QTextEdit {{
-    background: #050810;
-    color: #4a6080;
-    border: 1px solid {C_DIM2};
-    selection-background-color: #1a0030;
-    font-size: 8pt;
-}}
-QLineEdit {{
-    background: {C_DARK};
-    color: {C_CYAN};
-    border: 1px solid {C_DIM2};
-    padding: 1px 4px;
-}}
-QLineEdit:focus {{ border-color: {C_PURPLE}; }}
-QLabel {{ background: transparent; }}
-QStatusBar {{
-    background: {C_BAR2};
-    color: {C_DIM};
-    border-top: 1px solid {C_CYAN_DIM};
-    font-size: 8pt;
-}}
-QStatusBar::item {{ border: none; }}
-QLineEdit {{
-    background: #0d1220;
-    color: {C_CYAN};
-    border: 1px solid {C_CYAN_DIM};
-    padding: 2px 4px;
-}}
-QLineEdit:focus {{ border-color: {C_CYAN}; }}
-QDialog {{ background: {C_DARK}; }}
-QMessageBox {{ background: {C_DARK}; }}
-QToolTip {{
-    background: #0d1220;
-    color: {C_CYAN};
-    border: 1px solid {C_CYAN_DIM};
-    padding: 2px 6px;
-    font-size: 8pt;
-}}
-QLabel {{ background: transparent; }}
-QToolButton {{
-    color: {C_CYAN};
-    background: transparent;
-    border: 1px solid transparent;
-    padding: 2px;
-    min-width: 22px;
-    min-height: 22px;
-    font-size: 10pt;
-}}
-QToolButton:hover  {{ border: 1px solid {C_CYAN}; }}
-QToolButton:pressed {{ background: {C_CYAN_DIM}; }}
-QSlider::groove:horizontal {{
-    height: 4px;
-    background: #0E1218;
-    border: 1px solid {C_CYAN_DIM};
-}}
-QSlider::handle:horizontal {{
-    background: {C_CYAN};
-    border: none;
-    width: 8px;
-    height: 14px;
-    margin: -5px 0;
-}}
-QSlider::sub-page:horizontal {{
-    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-        stop:0 {C_CYAN}, stop:1 {C_PURPLE});
-    border: 1px solid {C_CYAN_DIM};
-}}
 """
 
 # ── Debug log (read directly off disk; remove once thumbnails confirmed) ───────
@@ -375,6 +209,47 @@ def _dbg(msg: str) -> None:
             _f.write(f"[{_th.current_thread().name}] {msg}\n")
     except Exception:
         pass
+
+
+def _probe_drive_root() -> Optional[Path]:
+    """The project drive/shots root to health-check before loading."""
+    try:
+        import os as _os
+        r = _os.environ.get("SF_SHOTS_ROOT")
+        if r:
+            return Path(r)
+        import seed_viewer.paths as _pp
+        return Path(_pp._resolve_drive_root())
+    except Exception:
+        return None
+
+
+def drive_reachable(timeout: float = 4.0):
+    """Health-check the drive root within `timeout` seconds. A STALE Google Drive mount
+    can hang the very first read, so we probe on a thread and time out instead of letting
+    the loader spin forever. Returns (ok: bool, root: str | None)."""
+    root = _probe_drive_root()
+    if root is None:
+        return True, None                       # can't determine — don't block loading
+    result = {"ok": False}
+
+    def _probe():
+        try:
+            if root.is_dir():
+                for _ in root.iterdir():        # force one real read (catches stale handles)
+                    break
+                result["ok"] = True
+        except Exception:
+            result["ok"] = False
+
+    t = threading.Thread(target=_probe, daemon=True, name="drive-probe")
+    t.start(); t.join(timeout)
+    if t.is_alive():
+        _dbg(f"drive_reachable: TIMED OUT after {timeout}s on {root}")
+        return False, str(root)                 # probe hung → stale / unreachable
+    if not result["ok"]:
+        _dbg(f"drive_reachable: not a readable dir: {root}")
+    return result["ok"], str(root)
 
 
 # ── Main-thread dispatcher ────────────────────────────────────────────────────
@@ -703,7 +578,7 @@ def resolve_layer_sources(shotcodes: list[str], layer: str) -> list[tuple[str, s
         else:
             p, used = find_source(sf, layer), layer
         if p:
-            out.append((sc, str(p), bool(LAYERS.get(used, {}).get("is_video", True))))
+            out.append((sc, str(p), Path(p).suffix.lower() in _VIDEO_EXTS))
     return out
 
 
@@ -848,9 +723,8 @@ def _pil_to_qpixmap(img: Image.Image) -> QPixmap:
     return QPixmap.fromImage(qimg.copy())
 
 def get_first_frame(src: Path, layer: str) -> Optional[Path]:
-    spec = LAYERS.get(layer, {})
-    if not spec.get("is_video", False):
-        return src
+    if src.suffix.lower() not in _VIDEO_EXTS:
+        return src                       # already a still (png/jpg) — show as-is
     mtime  = int(src.stat().st_mtime)
     cached = CACHE_DIR / f"{mtime}_{src.stem}.jpg"
     if cached.exists():
@@ -860,8 +734,7 @@ def get_first_frame(src: Path, layer: str) -> Optional[Path]:
     return cached if cached.exists() else None
 
 def get_last_frame(src: Path, layer: str) -> Optional[Path]:
-    spec = LAYERS.get(layer, {})
-    if not spec.get("is_video", False):
+    if src.suffix.lower() not in _VIDEO_EXTS:
         return src
     mtime  = int(src.stat().st_mtime)
     cached = CACHE_DIR / f"{mtime}_{src.stem}_last.jpg"
@@ -885,8 +758,7 @@ def get_last_frame(src: Path, layer: str) -> Optional[Path]:
     return cached if cached.exists() else None
 
 def get_frame_at(src: Path, layer: str, frame_n: int) -> Optional[Path]:
-    spec = LAYERS.get(layer, {})
-    if not spec.get("is_video", False):
+    if src.suffix.lower() not in _VIDEO_EXTS:
         return src
     mtime  = int(src.stat().st_mtime)
     cached = CACHE_DIR / f"{mtime}_{src.stem}_f{frame_n}.jpg"
@@ -908,7 +780,15 @@ def load_display_image(src: Optional[Path], layer: str, w: int, h: int,
     if not frame or not frame.exists():
         return _placeholder(w, h, "extraction failed")
     try:
-        raw = Image.open(frame).convert("RGB")
+        # PIL's C decoders are NOT thread-safe in the frozen bundle (concurrent
+        # PNG decode -> access violation). Serialize decodes behind the process-
+        # wide image lock shared with the Studio family (sys._seed_img_lock).
+        import sys as _sys
+        import threading as _thr
+        if not hasattr(_sys, "_seed_img_lock"):
+            _sys._seed_img_lock = _thr.Lock()
+        with _sys._seed_img_lock:
+            raw = Image.open(frame).convert("RGB")
     except Exception:
         return _placeholder(w, h, "load error")
     sw, sh = raw.size
@@ -985,110 +865,164 @@ class PanelHeader(QWidget):
 # ── ShotCell widget (used in QListWidget) ─────────────────────────────────────
 
 class _ThumbLabel(QLabel):
-    """Thumbnail label that overlays a full-cell red X when the shot is omitted."""
+    """Media-wall tile: the image IS the cell. Shot code + status live ON the
+    image (bottom scrim, like every modern media app); omits get the red X;
+    hover-scrub draws a position line."""
     def __init__(self, omit: bool = False, parent=None):
         super().__init__(parent)
         self._omit = omit
+        self.scrub_frac = None      # 0..1 while hover-scrubbing
+        self.code_text = ""
+        self.badge = ""             # "DLV" | "OMT" | ""
 
     def paintEvent(self, ev):
         super().paintEvent(ev)
-        if not self._omit:
-            return
-        p = QPainter(self)
-        p.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-        p.setPen(QPen(QColor(210, 40, 40), 3))
         w, h = self.width(), self.height()
-        p.drawLine(0, 0, w, h)   # top-left → bottom-right
-        p.drawLine(w, 0, 0, h)   # top-right → bottom-left (right-to-left)
+        p = QPainter(self)
+        # bottom scrim so the overlaid text always reads
+        g = QLinearGradient(0, h - 26, 0, h)
+        g.setColorAt(0.0, QColor(0, 0, 0, 0))
+        g.setColorAt(1.0, QColor(0, 0, 0, 190))
+        p.fillRect(0, h - 26, w, 26, QBrush(g))
+        f = p.font(); f.setPointSize(8); f.setBold(True); p.setFont(f)
+        p.setPen(QColor("#e6edf3" if not self._omit else "#b06060"))
+        p.drawText(7, h - 7, self.code_text)
+        if self.badge:
+            col = {"DLV": C_GREEN, "OMT": "#e05555"}.get(self.badge, C_DIM)
+            p.setPen(QColor(col))
+            fm = p.fontMetrics()
+            p.drawText(w - fm.horizontalAdvance(self.badge) - 7, h - 7, self.badge)
+        if self.scrub_frac is not None:
+            p.fillRect(0, h - 3, w, 3, QColor(0, 0, 0, 140))
+            p.fillRect(0, h - 3, int(w * self.scrub_frac), 3, QColor(C_CYAN))
+        if self._omit:
+            p.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+            p.setPen(QPen(QColor(210, 40, 40), 3))
+            p.drawLine(0, 0, w, h)
+            p.drawLine(w, 0, 0, h)
         p.end()
 
 
+# ── hover-scrub filmstrips (Frame.io-style: glide across a tile to scrub) ─────
+# Lazy: a 12-frame strip is extracted the FIRST time a tile is hovered (ffprobe +
+# one ffmpeg pass off-thread, cached in RAM + temp) — zero cost until you hover.
+_SCRUB_N = 12
+_scrub_cache: dict = {}            # src -> [QImage]
+_scrub_pending: set = set()
+_scrub_pool = ThreadPoolExecutor(max_workers=2)
+
+
+def _build_scrub_strip(src: str):
+    import hashlib as _hl
+    import tempfile as _tf
+    out_dir = Path(_tf.gettempdir()) / "ks_scrub" / _hl.md5(src.encode()).hexdigest()[:16]
+    try:
+        if not (out_dir.exists() and len(list(out_dir.glob("*.jpg"))) >= _SCRUB_N):
+            out_dir.mkdir(parents=True, exist_ok=True)
+            pr = subprocess.run([_FFPROBE, "-v", "error", "-show_entries", "format=duration",
+                                 "-of", "csv=p=0", src],
+                                capture_output=True, text=True, timeout=20, **_silent_kwargs())
+            dur = max(0.2, float((pr.stdout or "1").strip() or 1))
+            subprocess.run([_FFMPEG, "-y", "-v", "error", "-i", src,
+                            "-vf", f"fps={_SCRUB_N / dur:.6f},scale={THUMB_W}:{THUMB_H}:"
+                                   f"force_original_aspect_ratio=decrease,"
+                                   f"pad={THUMB_W}:{THUMB_H}:(ow-iw)/2:(oh-ih)/2:color=0x101010",
+                            "-frames:v", str(_SCRUB_N),
+                            str(out_dir / "s_%02d.jpg")],
+                           capture_output=True, timeout=60, **_silent_kwargs())
+        frames = sorted(out_dir.glob("*.jpg"))[:_SCRUB_N]
+        imgs = [qi for f in frames if not (qi := QImage(str(f))).isNull()]
+        return imgs or None
+    except Exception:
+        return None
+
+
 class ShotCell(QWidget):
-    """One browser row: thin accent + thumbnail + shotcode + layer badge."""
+    """Media-wall cell: one big thumbnail with the metadata ON the image, plus
+    Frame.io-style hover-scrub when the layer source is a video."""
     def __init__(self, shotcode: str, accent: str = C_CYAN_DIM,
                  is_omit: bool = False, delivered: bool = False, parent=None):
         super().__init__(parent)
         self._shotcode = shotcode
-        self._accent   = accent
         self._is_omit  = is_omit
+        self._scrub_src = None      # str path of the mp4 backing this tile
+        self._base_pix  = None
         self.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent)
         bg = QColor("#140808" if is_omit else C_DARK)
         pal = self.palette(); pal.setColor(self.backgroundRole(), bg)
         self.setAutoFillBackground(True); self.setPalette(pal)
 
+        # 3px breathing room: the list item's selected/hover background shows
+        # through as a RING around the tile — visible selection at a glance.
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(1, 1, 1, 1)
+        layout.setContentsMargins(3, 3, 3, 3)
         layout.setSpacing(0)
 
-        # Accent top bar (2px neon line)
-        accent_bar = QWidget(self)
-        accent_bar.setFixedHeight(2)
-        accent_bar.setAutoFillBackground(True)
-        ap = accent_bar.palette(); ap.setColor(accent_bar.backgroundRole(), QColor(accent))
-        accent_bar.setPalette(ap)
-        layout.addWidget(accent_bar)
-
-        # Thumbnail (omit cells overlay a full-cell red X)
         self.thumb_lbl = _ThumbLabel(is_omit, self)
         self.thumb_lbl.setFixedSize(THUMB_W, THUMB_H)
         self.thumb_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.thumb_lbl.code_text = shotcode.split("_")[-1] if "_" in shotcode else shotcode
+        self.thumb_lbl.badge = "DLV" if delivered else ("OMT" if is_omit else "")
+        self.thumb_lbl.setMouseTracking(True)
         ph = _pil_to_qpixmap(_placeholder(THUMB_W, THUMB_H, "..."))
         self.thumb_lbl.setPixmap(ph)
         layout.addWidget(self.thumb_lbl)
+        self.setMouseTracking(True)
 
-        # Shot code + badge (compact single row)
-        info_row = QWidget(self)
-        info_row.setAutoFillBackground(True)
-        info_row.setPalette(pal)
-        info_layout = QHBoxLayout(info_row)
-        info_layout.setContentsMargins(3, 1, 3, 1)
-        info_layout.setSpacing(2)
-
-        code_txt = shotcode.split("_")[-1] if "_" in shotcode else shotcode
-        code_lbl = QLabel(code_txt, info_row)
-        base_style = f"font-size: 7pt; font-weight: bold; background: transparent;"
-        if is_omit:
-            code_lbl.setStyleSheet(f"color: #884444; text-decoration: line-through; {base_style}")
-        else:
-            code_lbl.setStyleSheet(f"color: {C_FG}; {base_style}")
-        info_layout.addWidget(code_lbl)
-        info_layout.addStretch()
-
-        if delivered:
-            dlv = QLabel("DLV", info_row)
-            dlv.setStyleSheet(f"color: {C_GREEN}; font-size: 6pt; background: transparent;")
-            info_layout.addWidget(dlv)
-        elif is_omit:
-            om = QLabel("OMT", info_row)
-            om.setStyleSheet("color: #cc3333; font-size: 6pt; background: transparent;")
-            info_layout.addWidget(om)
-
-        layout.addWidget(info_row)
-
-        # Source label (clipped to width)
-        self.src_lbl = QLabel("", self)
-        self.src_lbl.setStyleSheet(
-            f"color: {C_DIM}; font-size: 6pt; padding: 0 3px 1px 3px; background: transparent;")
-        layout.addWidget(self.src_lbl)
-
+    # ── data ──
     def set_thumbnail(self, pil_img: Image.Image):
         try:
             pix = _pil_to_qpixmap(pil_img)
+            self._base_pix = pix
             self.thumb_lbl.setPixmap(pix)
-            if _Dispatcher._fired <= 3:
-                _dbg(f"set_thumbnail {self._shotcode}: pix={pix.width()}x{pix.height()} "
-                     f"null={pix.isNull()}")
         except Exception as e:
             _dbg(f"set_thumbnail FAILED {getattr(self,'_shotcode','?')}: {e!r}")
 
     def set_source(self, text: str):
         try:
-            self.src_lbl.setText(text)
+            self.setToolTip(self._shotcode + "\n" + text)
         except RuntimeError:
             pass
 
+    def set_scrub_source(self, src):
+        s = str(src) if src else None
+        self._scrub_src = s if (s and s.lower().endswith((".mp4", ".mov", ".webm"))) else None
+
+    # ── hover-scrub ──
+    def enterEvent(self, ev):
+        s = self._scrub_src
+        if s and s not in _scrub_cache and s not in _scrub_pending:
+            _scrub_pending.add(s)
+
+            def _bg(path=s):
+                strip = _build_scrub_strip(path)
+                def _store():
+                    _scrub_pending.discard(path)
+                    if strip:
+                        _scrub_cache[path] = strip
+                post_to_main(_store)
+            _scrub_pool.submit(_bg)
+        super().enterEvent(ev)
+
+    def mouseMoveEvent(self, ev):
+        strip = _scrub_cache.get(self._scrub_src) if self._scrub_src else None
+        if strip:
+            frac = min(1.0, max(0.0, ev.position().x() / max(1, self.width())))
+            idx = min(len(strip) - 1, int(frac * len(strip)))
+            self.thumb_lbl.setPixmap(QPixmap.fromImage(strip[idx]))
+            self.thumb_lbl.scrub_frac = frac
+            self.thumb_lbl.update()
+        super().mouseMoveEvent(ev)
+
+    def leaveEvent(self, ev):
+        if self._base_pix is not None:
+            self.thumb_lbl.setPixmap(self._base_pix)
+        self.thumb_lbl.scrub_frac = None
+        self.thumb_lbl.update()
+        super().leaveEvent(ev)
+
     def sizeHint(self) -> QSize:
-        return QSize(THUMB_W + 2, THUMB_H + 26)
+        return QSize(THUMB_W + 6, THUMB_H + 6)
 
 
 # ── ShotBrowser ───────────────────────────────────────────────────────────────
@@ -1368,7 +1302,16 @@ class ShotBrowser(QWidget):
         src_text = f"[{used}]  {src.name[:32] if src else '—'}"
         _dbg(f"_load_async {shotcode}: sf={'Y' if sf else 'N'} "
              f"src={src.name if src else 'None'} img={img.size if img else 'None'}")
-        post_to_main(lambda c=cell, i=img, t=src_text: (c.set_thumbnail(i), c.set_source(t)))
+
+        def _apply(c=cell, i=img, t=src_text, s=src):
+            # a refresh may have deleted this cell while we were decoding —
+            # touching a dead C++ widget raises/crashes; check validity first
+            import shiboken6
+            if shiboken6.isValid(c):
+                c.set_thumbnail(i)
+                c.set_source(t)
+                c.set_scrub_source(s)    # arms Frame.io-style hover-scrub for videos
+        post_to_main(_apply)
 
 
 # ── WipeView ─────────────────────────────────────────────────────────────────
@@ -1494,9 +1437,16 @@ class WipeView(QWidget):
         return (c.loaded * c.w * c.h * 3) if c else 0
 
     def _lru_retire(self, cache):
-        """Park a no-longer-active FrameCache so revisiting its shot is instant.
-        Lets it keep decoding; evicts the oldest only when over the RAM budget."""
+        """Park a FINISHED FrameCache so revisiting its shot is instant.
+
+        Incomplete caches are STOPPED and dropped: letting retired caches keep
+        decoding meant clicking through N shots stacked N background ffmpeg
+        decoders + gigabytes of RAM — the 'viewer freezes when I click other
+        shots' report. Finished caches cost nothing to keep (no thread)."""
         if not cache or not getattr(cache, "src", None):
+            return
+        if not getattr(cache, "done", False):
+            cache.stop()                       # kill the decode thread + free it
             return
         key = (str(cache.src), cache.w, cache.h)
         self._frame_lru[key] = cache
@@ -1903,21 +1853,8 @@ class WipeView(QWidget):
             p.setPen(col)
             p.drawText(4, 0, 66, 20, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, lbl)
 
-        # Info overlay
-        if self._overlay_on and self._overlay_lines:
-            fnt = p.font(); fnt.setPointSize(9); fnt.setBold(False); p.setFont(fnt)
-            fm = p.fontMetrics()
-            pad, lh = 8, 17
-            tw = max(fm.horizontalAdvance(l) for l in self._overlay_lines) + pad
-            th = len(self._overlay_lines) * lh + pad
-            p.fillRect(pad, pad, tw, th, QColor(0x11, 0x11, 0x11, 200))
-            p.setPen(QPen(QColor("#444444"), 1))
-            p.drawRect(pad, pad, tw, th)
-            p.setPen(QColor("white"))
-            for i, line in enumerate(self._overlay_lines):
-                p.drawText(pad + 5, pad + 4 + i * lh + lh // 2 - fm.height() // 2,
-                           tw - 8, fm.height() + 2,
-                           Qt.AlignmentFlag.AlignLeft, line)
+        # (legacy paint-time info overlay REMOVED — ViewerOverlayInfo is the one
+        # info box; both drawing at once produced the garbled double text)
 
         # Safe-area guide (drawn last so it sits on top of the wipe seam)
         if self._safe_area > 0:
@@ -2024,8 +1961,14 @@ class ViewerOverlayInfo(QWidget):
         self._a_lbl = a_lbl
         self._b_lbl = b_lbl
         self._pos   = pos
+        # size is computed HERE (not in paintEvent — resizing during paint forces
+        # a relayout mid-frame and flickers)
+        fm = self.fontMetrics()
+        lines = [f"{shot}  {pos}", seq, f"A: {a_lbl}", f"B: {b_lbl}"]
+        pad, lh = 8, fm.height() + 3
+        tw = max((fm.horizontalAdvance(l) for l in lines if l), default=100) + pad * 2
+        self.setFixedSize(max(180, tw + 4), len(lines) * lh + pad + 4)
         self.update()
-        self.adjustSize()
 
     def paintEvent(self, ev):
         lines = [
@@ -2072,7 +2015,6 @@ class ViewerOverlayInfo(QWidget):
                        tw - pad, lh,
                        Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, line)
         p.end()
-        self.setFixedSize(max(180, tw + 4), th + 4)
 
 
 class ViewerIconStrip(QWidget):
@@ -2285,8 +2227,18 @@ class CollapsibleSection(QWidget):
         self._chevron.setStyleSheet(f"color: {C_CYAN}; font-size: 8pt; background: transparent;")
         hdr_lay.addWidget(self._chevron)
 
+        # LCARS numbered header: GOLD number + blue title (one style everywhere)
+        import re as _re
+        m = _re.match(r"^(\d+)\s*·\s*(.+)$", title)
+        if m:
+            num_lbl = QLabel(m.group(1), self._hdr)
+            num_lbl.setStyleSheet(f"color: {C_AMBER}; font-size: 8pt; font-weight: 700; "
+                                  "background: transparent; letter-spacing: 1px;")
+            hdr_lay.addWidget(num_lbl)
+            title = m.group(2)
         title_lbl = QLabel(title.upper(), self._hdr)
-        title_lbl.setStyleSheet(f"color: {C_CYAN}; font-size: 7pt; font-weight: bold; background: transparent; letter-spacing: 1px;")
+        title_lbl.setStyleSheet(f"color: {C_CYAN}; font-size: 8pt; font-weight: 600; "
+                                "background: transparent; letter-spacing: 2px;")
         hdr_lay.addWidget(title_lbl)
         hdr_lay.addStretch()
 
@@ -2367,11 +2319,11 @@ class ContentPanel(QWidget):
 
         def _micro_lbl(text: str, color: str = C_CYAN) -> QLabel:
             l = QLabel(text)
-            l.setStyleSheet(f"color: {color}; font-size: 7pt; font-weight: bold; background: transparent; letter-spacing: 1px;")
+            l.setStyleSheet(f"color: {color}; font-size: 8pt; font-weight: 600; background: transparent; letter-spacing: 1px;")
             return l
 
-        # ── SHOT INFO ─────────────────────────────────────────────────────
-        si = CollapsibleSection("SHOT INFO")
+        # ── SHOT INFO (incl. the read-only brief — it's info, not chat) ────
+        si = CollapsibleSection("01 · SHOT INFO")
         self._seq_lbl    = _dim_lbl("")
         self._seq_lbl.setStyleSheet(f"color: {C_FG}; font-size: 9pt; font-weight: bold; background: transparent;")
         self._range_lbl  = _dim_lbl("")
@@ -2379,10 +2331,14 @@ class ContentPanel(QWidget):
         si.add_widget(self._seq_lbl)
         si.add_widget(self._range_lbl)
         si.add_widget(self._status_lbl_info)
+        self._fb_text = QPlainTextEdit()
+        self._fb_text.setReadOnly(True)
+        self._fb_text.setMaximumHeight(88)
+        si.add_widget(self._fb_text)
         lay.addWidget(si)
 
         # ── ELEMENT SELECTION ─────────────────────────────────────────────
-        es = CollapsibleSection("ELEMENT SELECTION")
+        es = CollapsibleSection("02 · ELEMENT SELECTION")
         # Layer A
         es.add_widget(_micro_lbl("LAYER A  —", C_CYAN))
         self._layer_a_cb = QComboBox()
@@ -2419,7 +2375,7 @@ class ContentPanel(QWidget):
         lay.addWidget(es)
 
         # ── GRADE ─────────────────────────────────────────────────────────
-        gr = CollapsibleSection("GRADE")
+        gr = CollapsibleSection("03 · GRADE")
         grade_row = QWidget(); grade_lay = QHBoxLayout(grade_row)
         grade_lay.setContentsMargins(0, 0, 0, 0); grade_lay.setSpacing(6)
         self._grade_cs_cb = QComboBox()
@@ -2435,39 +2391,57 @@ class ContentPanel(QWidget):
         gr.add_widget(self._grade_lbl)
         lay.addWidget(gr)
 
-        # ── NOTES ─────────────────────────────────────────────────────────
-        nt = CollapsibleSection("NOTES")
-        self._fb_shot_lbl = QLabel("")
-        self._fb_shot_lbl.setStyleSheet(f"color: {C_CYAN}; font-size: 8pt; font-weight: bold; background: transparent;")
-        nt.add_widget(self._fb_shot_lbl)
-        self._fb_text = QPlainTextEdit()
-        self._fb_text.setReadOnly(True)
-        self._fb_text.setMinimumHeight(70)
-        self._fb_text.setMaximumHeight(140)
-        self._fb_text.setPlaceholderText("Add note or feedback…")
-        nt.add_widget(self._fb_text)
-        lay.addWidget(nt)
-
-        # ── ACTIONS ───────────────────────────────────────────────────────
-        ac = CollapsibleSection("ACTIONS")
-        act_row = QWidget(); act_lay = QHBoxLayout(act_row)
-        act_lay.setContentsMargins(0, 0, 0, 0); act_lay.setSpacing(8)
-        def _act_btn(glyph: str, tip: str) -> QToolButton:
-            b = QToolButton(); b.setText(glyph); b.setFixedSize(32, 30); b.setToolTip(tip)
-            return b
-        self._btn_deliver  = _act_btn("✈", "Deliver…")
-        self._btn_beeble   = _act_btn("☁", "Submit Beeble")
-        self._btn_magnific = _act_btn("✦", "Submit Magnific")
-        self._btn_deliver.clicked.connect(self.deliver_clicked)
-        self._btn_beeble.clicked.connect(self.beeble_clicked)
-        self._btn_magnific.clicked.connect(self.magnific_clicked)
-        for b in (self._btn_deliver, self._btn_beeble, self._btn_magnific):
-            act_lay.addWidget(b)
-        act_lay.addStretch()
-        ac.add_widget(act_row)
-        lay.addWidget(ac)
-
         lay.addStretch()
+
+        # ── COMMENTS HUB (outside the scroll — ALWAYS visible, owns the rest of
+        # the panel height). This is the show's communication surface: the same
+        # notes the control tower and MCP see. Not a sidebar afterthought.
+        hub = QWidget(self)
+        hub_l = QVBoxLayout(hub)
+        hub_l.setContentsMargins(8, 8, 8, 8)
+        hub_l.setSpacing(6)
+        hub.setStyleSheet(f"background: {C_BAR};")
+
+        hd = QHBoxLayout(); hd.setSpacing(6)
+        acc = QLabel(); acc.setFixedSize(3, 16)
+        acc.setStyleSheet(f"background: {C_CYAN};")
+        hd.addWidget(acc)
+        _cl = QLabel("<span style='color:#e8b33a;'>04</span> · COMMENTS")
+        _cl.setStyleSheet(f"color:{C_FG}; font-size:9pt; font-weight:700; "
+                          "background:transparent; letter-spacing:1px;")
+        hd.addWidget(_cl)
+        self._comment_count = QLabel("")
+        self._comment_count.setStyleSheet(
+            f"color:#06181d; background:{C_CYAN}; font-size:8pt; font-weight:700; "
+            "border-radius:8px; padding:1px 8px;")
+        self._comment_count.setVisible(False)
+        hd.addWidget(self._comment_count)
+        hd.addStretch()
+        self._fb_shot_lbl = QLabel("")
+        self._fb_shot_lbl.setStyleSheet(f"color:{C_DIM}; font-size:8pt; background:transparent;")
+        hd.addWidget(self._fb_shot_lbl)
+        hub_l.addLayout(hd)
+
+        from PySide6.QtWidgets import QTextEdit
+        self._comments_view = QTextEdit()
+        self._comments_view.setReadOnly(True)
+        self._comments_view.setMinimumHeight(160)
+        hub_l.addWidget(self._comments_view, stretch=1)
+
+        self._comment_input = QPlainTextEdit()
+        self._comment_input.setFixedHeight(56)
+        self._comment_input.setPlaceholderText("Write a comment…   (Ctrl+Enter to post)")
+        hub_l.addWidget(self._comment_input)
+        self._post_btn = QPushButton("↑  Post comment")
+        self._post_btn.setObjectName("go")      # the hub CTA — the panel's one loud button
+        self._post_btn.clicked.connect(self._post_comment)
+        hub_l.addWidget(self._post_btn)
+        from PySide6.QtGui import QShortcut
+        _sc = QShortcut(QKeySequence("Ctrl+Return"), self._comment_input)
+        _sc.setContext(Qt.ShortcutContext.WidgetShortcut)
+        _sc.activated.connect(self._post_comment)
+
+        outer.addWidget(hub, stretch=1)
 
     # ── Update helpers ────────────────────────────────────────────────────
 
@@ -2475,10 +2449,84 @@ class ContentPanel(QWidget):
         self._seq_lbl.setText(seq)
         self._range_lbl.setText(range_text)
         self._fb_shot_lbl.setText(shotcode)
+        self._note_shot = shotcode
+        self.reload_comments()
 
     def update_feedback(self, text: str):
         self._fb_text.setPlainText(text)
         self._fb_text.verticalScrollBar().setValue(0)
+
+    def reload_comments(self):
+        """Fetch the shot's comments OFF the GUI thread and render as bubbles.
+
+        The fetch is a DB/network round-trip: doing it synchronously in the shot-
+        click path froze the viewer for seconds per click on machines with a slow
+        or unreachable hub (Sholto's 'freezes when I click on any other shots')."""
+        sc = getattr(self, "_note_shot", None)
+        if not sc:
+            return
+        self._comments_view.setHtml(
+            f"<div style='color:{C_DIM}; font-size:9pt;'>loading comments…</div>")
+        import threading
+
+        def _fetch(shot=sc):
+            try:
+                import hub_client
+                notes = hub_client.get_backend().notes(shot) or []
+            except Exception as e:
+                notes = e
+            def _apply():
+                # a newer shot may have been clicked while we fetched — drop stale results
+                if getattr(self, "_note_shot", None) == shot:
+                    self._render_comments(notes)
+            post_to_main(_apply)
+        threading.Thread(target=_fetch, daemon=True, name="comments-fetch").start()
+
+    def _render_comments(self, notes):
+        try:
+            import html as _html
+            if isinstance(notes, Exception):
+                raise notes
+            self._comment_count.setText(str(len(notes)))
+            self._comment_count.setVisible(bool(notes))
+            if notes:
+                rows = []
+                for n in notes:
+                    who = _html.escape((n.get("author") or "?").upper())
+                    kind = (n.get("kind") or "note").lower()
+                    tag = ("" if kind == "note" else
+                           f"&nbsp;<span style='color:{C_AMBER}; font-size:8pt;'>· {kind.upper()}</span>")
+                    body = _html.escape(n.get("body", "")).replace("\n", "<br/>")
+                    rows.append(
+                        f"<table width='100%' cellspacing='0' cellpadding='7'>"
+                        f"<tr><td bgcolor='{C_BTN}'>"
+                        f"<span style='color:{C_CYAN}; font-weight:bold;'>{who}</span>{tag}"
+                        f"<br/><span style='color:{C_FG};'>{body}</span>"
+                        f"</td></tr></table>")
+                self._comments_view.setHtml(
+                    "<div style='font-size:9pt;'>" + "<p style='font-size:2pt;'></p>".join(rows) + "</div>")
+                sb = self._comments_view.verticalScrollBar()
+                sb.setValue(sb.maximum())        # newest at the bottom, like chat
+            else:
+                self._comments_view.setHtml(
+                    f"<div style='color:{C_DIM}; font-size:9pt;'>No comments yet — "
+                    f"start the conversation below.</div>")
+        except Exception as e:
+            self._comments_view.setPlainText(f"(comments need a configured backend — {type(e).__name__})")
+
+    def _post_comment(self):
+        import os
+        sc = getattr(self, "_note_shot", None)
+        body = self._comment_input.toPlainText().strip()
+        if not sc or not body:
+            return
+        try:
+            import hub_client
+            hub_client.get_backend().add_note(sc, body, os.environ.get("SF_USER", "viewer"))
+            self._comment_input.clear()
+            self.reload_comments()
+        except Exception as e:
+            self._comments_view.setPlainText(f"[could not post: {e}]\n\n" + self._comments_view.toPlainText())
 
     def update_grade(self, exposure: dict, gamma: dict, saturation: dict):
         parts = []
@@ -2584,43 +2632,14 @@ class ShotViewerApp(QMainWindow):
         main_lay.setContentsMargins(0, 0, 0, 0)
         main_lay.setSpacing(0)
 
-        # ── Brand header strip (below menu bar) ───────────────────────────────
-        brand_strip = QWidget(central)
-        brand_strip.setFixedHeight(22)
-        brand_strip.setAutoFillBackground(True)
-        bs_pal = brand_strip.palette()
-        bs_pal.setColor(brand_strip.backgroundRole(), QColor(C_BAR2))
-        brand_strip.setPalette(bs_pal)
-        bs_lay = QHBoxLayout(brand_strip)
-        bs_lay.setContentsMargins(0, 0, 10, 0)
-        bs_lay.setSpacing(0)
-
-        bs_accent = QWidget(brand_strip); bs_accent.setFixedSize(3, 22)
-        bs_accent.setAutoFillBackground(True)
-        bsa_pal = bs_accent.palette()
-        bsa_pal.setColor(bs_accent.backgroundRole(), QColor(C_CYAN))
-        bs_accent.setPalette(bsa_pal)
-        bs_lay.addWidget(bs_accent)
-
-        brand_lbl = QLabel("  SGI TRON VFX  //  PIPELINE  ", brand_strip)
-        brand_lbl.setStyleSheet(
-            f"color: {C_CYAN_DIM}; font-size: 7pt; font-weight: bold; "
-            f"letter-spacing: 2px; background: transparent;")
-        bs_lay.addWidget(brand_lbl)
-        bs_lay.addStretch()
-        proj_lbl = QLabel("PROJECT: SEED_FILM", brand_strip)
-        proj_lbl.setStyleSheet(f"color: {C_DIM}; font-size: 7pt; background: transparent;")
-        bs_lay.addWidget(proj_lbl)
+        # ── LCARS command band (the reference's top bar) ──────────────────────
+        brand_strip = _theme.CommandBar("SEEDSTUDIO", "01 SHOT VIEWER / PLAYER")
         self._brand_strip = brand_strip
         main_lay.addWidget(brand_strip)
 
         # ── Shot header strip ─────────────────────────────────────────────────
         shot_strip = QWidget(central)
-        shot_strip.setFixedHeight(40)
-        shot_strip.setAutoFillBackground(True)
-        ss_pal = shot_strip.palette()
-        ss_pal.setColor(shot_strip.backgroundRole(), QColor(C_BAR))
-        shot_strip.setPalette(ss_pal)
+        shot_strip.setFixedHeight(38)   # lives INSIDE the player card (reference layout)
         ss_lay = QHBoxLayout(shot_strip)
         ss_lay.setContentsMargins(10, 0, 10, 0)
         ss_lay.setSpacing(8)
@@ -2633,8 +2652,8 @@ class ShotViewerApp(QMainWindow):
 
         self._shot_lbl = QLabel("—", shot_strip)
         self._shot_lbl.setStyleSheet(
-            f"color: {C_CYAN}; font-size: 16pt; font-weight: bold; "
-            f"letter-spacing: 4px; background: transparent;")
+            f"color: {C_FG}; font-size: 12pt; font-weight: bold; "
+            f"letter-spacing: 3px; background: transparent;")
         self._shot_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
         ss_lay.addWidget(self._shot_lbl)
 
@@ -2672,35 +2691,54 @@ class ShotViewerApp(QMainWindow):
         nav_next.clicked.connect(self._next_shot)
         ss_lay.addWidget(nav_next)
 
+        # ◉ Ask PIP — opens the pipeline chat pre-seeded with the current shot
+        pip_btn = QPushButton("◉ PIP", shot_strip)
+        pip_btn.setToolTip("Ask PIP about this shot (pipeline chat)")
+        pip_btn.setStyleSheet(f"background:transparent; border:1px solid {C_DIM2}; "
+                              f"border-radius:10px; padding:2px 10px; color:{C_AMBER}; "
+                              "font-size:8pt; font-weight:600;")
+        pip_btn.clicked.connect(self._ask_pip)
+        ss_lay.addSpacing(8)
+        ss_lay.addWidget(pip_btn)
+
         self._shot_strip = shot_strip
-        main_lay.addWidget(shot_strip)
 
-        # ── Main row: browser | viewer_pane | content ─────────────────────────
-        self._splitter = QSplitter(Qt.Orientation.Horizontal, central)
-        self._splitter.setHandleWidth(1)
-        main_lay.addWidget(self._splitter, stretch=1)
+        # ── Main row: three FRAMED instrument cards floating on the deck ──────
+        # (the reference layout: browser card | player card | info card, with
+        # the window background showing between them — not welded full-bleed)
+        deck = QWidget(central)
+        deck_lay = QVBoxLayout(deck)
+        deck_lay.setContentsMargins(10, 10, 10, 10)
+        deck_lay.setSpacing(0)
+        main_lay.addWidget(deck, stretch=1)
+        self._splitter = QSplitter(Qt.Orientation.Horizontal, deck)
+        self._splitter.setHandleWidth(10)
+        self._splitter.setStyleSheet("QSplitter::handle{background:transparent;}")
+        deck_lay.addWidget(self._splitter)
 
-        # Shot browser
-        self._browser = ShotBrowser(self.db, self.delivered, self._splitter)
+        # Shot browser — card 01
+        bwrap = QFrame(self._splitter); bwrap.setObjectName("card")
+        bl = QVBoxLayout(bwrap); bl.setContentsMargins(6, 6, 6, 6); bl.setSpacing(0)
+        self._browser = ShotBrowser(self.db, self.delivered, bwrap)
         self._browser.shot_selected.connect(self._load_shot)
         self._browser.seq_changed.connect(self._on_seq_change_from_browser)
-        self._splitter.addWidget(self._browser)
+        bl.addWidget(self._browser)
+        self._splitter.addWidget(bwrap)
 
-        # Viewer pane (WipeView + overlays + timeline + transport)
-        viewer_pane = QWidget(self._splitter)
-        viewer_pane.setAutoFillBackground(True)
-        vp_pal = viewer_pane.palette()
-        vp_pal.setColor(viewer_pane.backgroundRole(), QColor(C_DARK))
-        viewer_pane.setPalette(vp_pal)
+        # Viewer pane — the PLAYER CARD (header + image + timeline + transport
+        # all inside one framed instrument, like the reference)
+        viewer_pane = QFrame(self._splitter)
+        viewer_pane.setObjectName("card")
         vp_lay = QVBoxLayout(viewer_pane)
-        vp_lay.setContentsMargins(0, 0, 0, 0)
-        vp_lay.setSpacing(0)
+        vp_lay.setContentsMargins(8, 4, 8, 6)
+        vp_lay.setSpacing(4)
+        vp_lay.addWidget(shot_strip)   # shot code · A·WIPE·B · nav — card header
 
         # WipeView (1px cyan border wrapper)
         wipe_border = QWidget(viewer_pane)
         wipe_border.setAutoFillBackground(True)
         wb_pal = wipe_border.palette()
-        wb_pal.setColor(wipe_border.backgroundRole(), QColor(C_CYAN_DIM))
+        wb_pal.setColor(wipe_border.backgroundRole(), QColor(C_DIM2))
         wipe_border.setPalette(wb_pal)
         wb_lay = QVBoxLayout(wipe_border)
         wb_lay.setContentsMargins(1, 1, 1, 1)
@@ -2736,7 +2774,7 @@ class ShotViewerApp(QMainWindow):
 
         self._viewer_icons = ViewerIconStrip(self.wipe)
         self._viewer_icons.add_icon("zoom",    "□",  "Reset zoom",        lambda: (setattr(self.wipe, "_zoom", 1.0), setattr(self.wipe, "_pan_x", 0.0), setattr(self.wipe, "_pan_y", 0.0), self.wipe._render()))
-        self._viewer_icons.add_icon("mask",    "M",  "Mask (n/a)",        lambda: None)
+        # (mask tool not shipped yet — dead button removed rather than shipping a no-op)
         self._viewer_icons.add_icon("overlay", "▣",  "Toggle overlay [O]", self._toggle_overlay)
         self._viewer_icons.add_icon("channel", "▤",  "Cycle channel",     self._cycle_channel)
         self._viewer_icons.add_icon("swap",    "⇄",  "Swap A/B [S]",      self._swap)
@@ -2769,8 +2807,11 @@ class ShotViewerApp(QMainWindow):
 
         self._splitter.addWidget(viewer_pane)
 
-        # Content panel
-        self._content = ContentPanel(self._splitter)
+        # Content panel — card 02
+        cwrap = QFrame(self._splitter); cwrap.setObjectName("card")
+        cl = QVBoxLayout(cwrap); cl.setContentsMargins(4, 4, 4, 4); cl.setSpacing(0)
+        self._content = ContentPanel(cwrap)
+        cl.addWidget(self._content)
         self._content.layer_a_changed.connect(self._on_layer_a_change)
         self._content.layer_b_changed.connect(self._on_layer_b_change)
         self._content.ver_a_changed.connect(lambda i: self._on_ver_change("a", i))
@@ -2778,10 +2819,10 @@ class ShotViewerApp(QMainWindow):
         self._content.deliver_clicked.connect(self._open_deliver_dialog)
         self._content.beeble_clicked.connect(self._beeble_current)
         self._content.magnific_clicked.connect(self._magnific_current)
-        self._splitter.addWidget(self._content)
+        self._splitter.addWidget(cwrap)
 
         # Splitter proportions: browser fixed, viewer expands, content fixed
-        self._splitter.setSizes([THUMB_W * 2 + 50, 9999, 300])
+        self._splitter.setSizes([THUMB_W * 2 + 62, 9999, 320])
         self._splitter.setStretchFactor(0, 0)
         self._splitter.setStretchFactor(1, 1)
         self._splitter.setStretchFactor(2, 0)
@@ -3089,18 +3130,42 @@ class ShotViewerApp(QMainWindow):
             self._load_b()
 
     def _refresh_versions(self, side: str):
+        """Resolve the side's version list OFF the GUI thread.
+
+        find_shot_folder + find_all_versions glob the Google Drive mount — doing
+        that synchronously in the shot-click path froze the whole app for as long
+        as the mount stalled (Sholto: 'freezes when I click onto another shot,
+        cache 0%'). Results are applied back on the GUI thread; a generation
+        counter drops stale results if the user has clicked on."""
         sc = self._current_shot
-        sf = find_shot_folder(sc) if sc else None
+        if not sc:
+            return
         layer = self._layer_a_key if side == "a" else self._layer_b_key
-        vers = find_all_versions(sf, layer) if sf and layer != "cascade" else []
-        labels = [_ver_label(p, i) for i, p in enumerate(vers)] or ["(no versions)"]
-        if side == "a":
-            self._vers_a = vers
-            self._ver_a_idx = 0
-        else:
-            self._vers_b = vers
-            self._ver_b_idx = 0
-        self._content.update_versions(side, labels)
+        gen_attr = f"_vers_gen_{side}"
+        gen = getattr(self, gen_attr, 0) + 1
+        setattr(self, gen_attr, gen)
+        self._content.update_versions(side, ["…"])          # instant feedback
+
+        def work(shot=sc, lay=layer, g=gen, sd=side):
+            try:
+                sf = find_shot_folder(shot)
+                vers = find_all_versions(sf, lay) if sf and lay != "cascade" else []
+            except Exception:
+                vers = []
+
+            def apply():
+                if getattr(self, gen_attr, 0) != g or self._current_shot != shot:
+                    return                                   # stale — user moved on
+                labels = [_ver_label(p, i) for i, p in enumerate(vers)] or ["(no versions)"]
+                if sd == "a":
+                    self._vers_a = vers
+                    self._ver_a_idx = 0
+                else:
+                    self._vers_b = vers
+                    self._ver_b_idx = 0
+                self._content.update_versions(sd, labels)
+            post_to_main(apply)
+        threading.Thread(target=work, daemon=True, name=f"vers-{side}").start()
 
     # ── Image fetching ────────────────────────────────────────────────────────
 
@@ -3206,6 +3271,25 @@ class ShotViewerApp(QMainWindow):
             return img, (src if src.suffix.lower() == ".mp4" else None)
 
         def _bg():
+            # STALE-DRIVE GUARD: if the project drive doesn't answer quickly (e.g. a dead
+            # Google Drive mount), surface it instead of hanging on the file read forever.
+            ok, root = drive_reachable()
+            if not ok:
+                msg = "drive unreachable — check Google Drive / Settings"
+                ea = _placeholder(w, h, f"A: {msg}"); eb = _placeholder(w, h, f"B: {msg}")
+
+                def _commit_err():
+                    if self._load_id != load_id:
+                        return
+                    if "a" in sides:
+                        self.wipe.set_a(ea)
+                    if "b" in sides:
+                        self.wipe.set_b(eb)
+                    self.wipe._play_frame_num = saved_frame
+                    self._set_status(f"⚠ drive unreachable: {root or 'set it in Settings'} "
+                                     f"— is Google Drive mounted?")
+                post_to_main(_commit_err)
+                return
             raw_a = path_a = raw_b = path_b = None
             if "a" in sides:
                 raw_a, path_a = _fetch_one(la, "A", vai)
@@ -3298,6 +3382,16 @@ class ShotViewerApp(QMainWindow):
         self._prefetch_layers(sc)
         self._prefetch_adjacent()
 
+    def _ask_pip(self):
+        try:
+            import seed_pip
+            sc = self._current_shot or "(no shot loaded)"
+            ctx = (f"Shot Viewer · looking at {sc} · layer A {self._layer_a_key} "
+                   f"vs layer B {self._layer_b_key}")
+            seed_pip.open_pip(ctx)
+        except Exception as e:
+            QMessageBox.information(self, "PIP", f"PIP could not open: {e}")
+
     def _prev_shot(self):
         if self._seq_shots and self._seq_idx > 0:
             self._seq_idx -= 1
@@ -3371,16 +3465,33 @@ class ShotViewerApp(QMainWindow):
         self.wipe.set_overlay(lines)
 
     def _update_feedback(self):
+        """Read the shot brief OFF the GUI thread (drive I/O froze shot clicks)
+        and strip the '════ SHOT BRIEF ════' ASCII art for a calm display."""
         sc = self._current_shot
-        sf = find_shot_folder(sc) if sc else None
-        fb = (sf / "feedback.txt") if sf else None
-        content = "(no feedback yet)"
-        if fb and fb.exists():
+        if not sc:
+            return
+
+        def work(shot=sc):
+            content = "(no brief yet)"
             try:
-                content = fb.read_text(encoding="utf-8")
+                sf = find_shot_folder(shot)
+                fb = (sf / "feedback.txt") if sf else None
+                if fb and fb.exists():
+                    raw = fb.read_text(encoding="utf-8")
+                    lines = []
+                    for ln in raw.splitlines():
+                        ln = ln.replace("═", "").replace("──", "").strip("= ").rstrip()
+                        if ln.strip():
+                            lines.append(ln.strip())
+                    content = "\n".join(lines) or content
             except Exception:
-                content = "[error reading feedback.txt]"
-        self._content.update_feedback(content)
+                content = "[error reading brief]"
+
+            def apply():
+                if self._current_shot == shot:
+                    self._content.update_feedback(content)
+            post_to_main(apply)
+        threading.Thread(target=work, daemon=True, name="brief-read").start()
 
     # ── Actions ───────────────────────────────────────────────────────────────
 

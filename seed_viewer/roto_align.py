@@ -34,7 +34,7 @@ from typing import Optional
 import numpy as np
 from PIL import Image
 
-from PySide6.QtCore import QEvent, Qt, QThread, QTimer
+from PySide6.QtCore import QEvent, Qt, QThread, QTimer, Slot
 from PySide6.QtGui import QImage, QPixmap
 from PySide6.QtWidgets import (
     QApplication, QComboBox, QDoubleSpinBox, QFileDialog, QGroupBox,
@@ -228,9 +228,16 @@ class FrameCache:
 
     def _load(self, path: Path) -> None:
         try:
-            img = Image.open(path)
-            mode = "L" if self._is_mask(path) else "RGB"
-            img  = img.convert(mode).resize((CACHE_W, CACHE_H), Image.BILINEAR)
+            # PIL's C decoders are NOT safe on concurrent pool threads in the
+            # frozen bundle (access violation) — serialize decode process-wide.
+            import sys as _sys
+            import threading as _thr
+            if not hasattr(_sys, "_seed_img_lock"):
+                _sys._seed_img_lock = _thr.Lock()
+            with _sys._seed_img_lock:
+                img = Image.open(path)
+                mode = "L" if self._is_mask(path) else "RGB"
+                img  = img.convert(mode).resize((CACHE_W, CACHE_H), Image.BILINEAR)
             with self._lock:
                 self._cache[path] = img
         except Exception:
@@ -914,9 +921,18 @@ class AlignWindow(QMainWindow):
             self.preload_lbl.setText(f"all first/last preloaded ({cached} frames)")
 
     def _on_frame_ready(self) -> None:
-        """Called from background thread when a frame finishes loading."""
+        """Called from a background loader thread when a frame finishes.
+
+        Widgets must ONLY be touched from the GUI thread (QLabel.setPixmap from a
+        worker is an access-violation lottery in the frozen build) — marshal via a
+        queued invocation onto the main thread."""
+        from PySide6.QtCore import QMetaObject, Qt as _Qt
+        QMetaObject.invokeMethod(self, "_on_frame_ready_main", _Qt.QueuedConnection)
+
+    @Slot()
+    def _on_frame_ready_main(self) -> None:
         self._update_preload_label()
-        self._refresh()   # Qt is thread-safe for queued signals; QLabel.setPixmap is safe from any thread in PySide6
+        self._refresh()
 
     # -----------------------------------------------------------------------
     # Shot navigation
