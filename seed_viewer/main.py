@@ -592,7 +592,8 @@ class LauncherWindow(QMainWindow):
             status_parts.append("Shots root not found — mount drive or check settings")
         if not cfg["db_found"]:
             status_parts.append("shot_database.json not found on drive")
-        status_text = ("●  " + "  ·  ".join(status_parts)) if status_parts else f"●  {cfg['shots_root']}"
+        status_text = ("●  " + "  ·  ".join(status_parts)) if status_parts else (
+            f"●  {cfg['shots_root']}     ·     SEED STUDIOS — AI IS OUR PRACTICE")
         status = QLabel(status_text)
         status.setAlignment(Qt.AlignCenter)
         status.setStyleSheet(f"color: {OK_COL if ok else ERR_COL}; font-size: 9pt;")
