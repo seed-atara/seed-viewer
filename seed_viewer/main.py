@@ -135,21 +135,21 @@ TOOLS: list[dict] = [
     #  inside Seed Studio. seed_image_edit.py is still bundled and imported by the studio.)
     {
         "kind":    "module",
-        "key":     "pip",
-        "label":   "PIP",
-        "desc":    "The seed inside the fruit — chat with the entire pipeline: shots · check-ins · generate · finish · deliver",
-        "module":  "seed_viewer.seed_pip",
-        "fn":      "launch",
-        "accent":  "#e8b33a",
-    },
-    {
-        "kind":    "module",
         "key":     "seed_studio",
         "label":   "Seed Studio",
         "desc":    "Generate (Seedance·Seedream) + Animate (Beeble) · cached playback · auto-prompt/mask · pipeline in→out",
         "module":  "seed_viewer.seed_studio",
         "fn":      "launch",
         "accent":  "#e8b33a",
+    },
+    {
+        "kind":    "module",
+        "key":     "pip",
+        "label":   "PIP",
+        "desc":    "The seed inside the fruit — chat with the entire pipeline: shots · check-ins · generate · finish · deliver",
+        "module":  "seed_viewer.seed_pip",
+        "fn":      "launch",
+        "accent":  "#4ade80",
     },
 ]
 
