@@ -454,64 +454,64 @@ class CliRunner(QDialog):
 # ── Tool card ──────────────────────────────────────────────────────────────────
 
 class ToolCard(QFrame):
+    """Hero tool card: big glyph, name, description, full-width Open."""
+    _GLYPHS = {"viewer": "▦", "pipeline": "⛁", "seed_studio": "✦"}
+
     def __init__(self, tool: dict, parent=None):
         super().__init__(parent)
         self._tool   = tool
         self._window = None
+        ac = tool["accent"]
 
-        self.setFrameShape(QFrame.StyledPanel)
+        self.setFixedSize(250, 270)
         self.setStyleSheet(f"""
             ToolCard {{
                 background: {CARD_BG};
                 border: 1px solid {CARD_BRD};
-                border-radius: 8px;
+                border-radius: 14px;
             }}
-            ToolCard:hover {{
-                border: 1px solid {tool['accent']};
-            }}
+            ToolCard:hover {{ border: 1px solid {ac}; }}
         """)
 
-        bar = QFrame()
-        bar.setFixedWidth(4)
-        bar.setStyleSheet(f"background: {tool['accent']}; border-radius: 2px;")
+        glyph = QLabel(self._GLYPHS.get(tool.get("key", ""), "◇"))
+        glyph.setAlignment(Qt.AlignCenter)
+        glyph.setStyleSheet(f"color: {ac}; font-size: 34pt; background: transparent; border: none;")
 
         name_lbl = QLabel(tool["label"])
-        name_lbl.setFont(QFont("", 14, QFont.Bold))
-        name_lbl.setStyleSheet(f"color: {TEXT_PRI}; border: none; background: transparent;")
+        name_lbl.setAlignment(Qt.AlignCenter)
+        name_lbl.setStyleSheet(f"color: {TEXT_PRI}; font-size: 13pt; font-weight: 700; "
+                               "background: transparent; border: none;")
 
-        kind_tag = "App" if tool.get("kind") == "module" else "CLI"
-        desc_lbl = QLabel(f"{tool['desc']}")
-        desc_lbl.setStyleSheet(f"color: {TEXT_SEC}; border: none; background: transparent;")
+        desc_lbl = QLabel(tool["desc"])
+        desc_lbl.setAlignment(Qt.AlignHCenter | Qt.AlignTop)
         desc_lbl.setWordWrap(True)
+        desc_lbl.setStyleSheet(f"color: {TEXT_SEC}; font-size: 9pt; "
+                               "background: transparent; border: none;")
 
         btn = QPushButton("Open")
-        btn.setFixedWidth(84)
         btn.setCursor(Qt.PointingHandCursor)
+        btn.setFixedHeight(38)
         btn.setStyleSheet(f"""
             QPushButton {{
-                background: {tool['accent']};
+                background: {ac};
                 color: {ON_ACCENT};
                 border: none;
-                border-radius: 6px;
-                padding: 8px 12px;
+                border-radius: 8px;
                 font-weight: bold;
+                font-size: 11pt;
+                letter-spacing: 1px;
             }}
-            QPushButton:hover {{ background: {tool['accent']}CC; }}
+            QPushButton:hover {{ background: {ac}CC; }}
         """)
         btn.clicked.connect(self._open)
 
-        text_col = QVBoxLayout()
-        text_col.setSpacing(4)
-        text_col.addWidget(name_lbl)
-        text_col.addWidget(desc_lbl)
-
-        row = QHBoxLayout(self)
-        row.setContentsMargins(12, 16, 16, 16)
-        row.addWidget(bar)
-        row.addSpacing(12)
-        row.addLayout(text_col)
-        row.addStretch()
-        row.addWidget(btn)
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(18, 22, 18, 18)
+        lay.setSpacing(10)
+        lay.addWidget(glyph)
+        lay.addWidget(name_lbl)
+        lay.addWidget(desc_lbl, 1)
+        lay.addWidget(btn)
 
     def _open(self) -> None:
         kind = self._tool.get("kind", "module")
@@ -540,86 +540,80 @@ class ToolCard(QFrame):
 
 # ── Launcher window ────────────────────────────────────────────────────────────
 
+
 class LauncherWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("SEEDSTUDIO")
-        self.setMinimumWidth(440)
 
         from seed_viewer.paths import config_summary
         cfg = config_summary()
-
-        # Header
-        title = QLabel("◢ SEEDSTUDIO")
-        _tf = QFont("", 20, QFont.Black)
-        _tf.setLetterSpacing(QFont.AbsoluteSpacing, 4)
-        title.setFont(_tf)
-        title.setStyleSheet(f"color: {CY};")
-
-        # running version, straight up — stamped into the build by CI ('0.0.0' from source)
         from seed_viewer import updater
         _ver = updater.installed_version()
         _vtext = _ver if str(_ver).startswith("v") else f"v{_ver}"
         self.setWindowTitle(f"SEEDSTUDIO {_vtext}")
-        ver_lbl = QLabel(_vtext)
-        ver_lbl.setStyleSheet(f"color: {TEXT_SEC}; font-size: 12px; padding-top: 12px;")
 
+        # ── top utility row (version left · settings right) ──
+        ver_lbl = QLabel(_vtext)
+        ver_lbl.setStyleSheet(f"color: {TEXT_SEC}; font-size: 10pt;")
+        gear = QPushButton("⚙  Settings")
+        gear.setCursor(Qt.PointingHandCursor)
+        gear.setStyleSheet(f"background: transparent; color: {TEXT_SEC}; "
+                           f"border: 1px solid {CARD_BRD}; border-radius: 6px; padding: 6px 14px;")
+        gear.clicked.connect(self._open_settings)
+        top = QHBoxLayout()
+        top.addWidget(ver_lbl)
+        top.addStretch()
+        top.addWidget(gear)
+
+        # ── hero brand block, centered ──
+        title = QLabel("◢ SEEDSTUDIO")
+        _tf = QFont("", 30, QFont.Black)
+        _tf.setLetterSpacing(QFont.AbsoluteSpacing, 6)
+        title.setFont(_tf)
+        title.setAlignment(Qt.AlignCenter)
+        title.setStyleSheet(f"color: {CY}; background: transparent;")
+        tagline = QLabel("the Seed Film toolchain — view · animate · generate · finish")
+        tagline.setAlignment(Qt.AlignCenter)
+        tagline.setStyleSheet(f"color: {TEXT_SEC}; font-size: 11pt; background: transparent;")
+
+        # ── tool cards, centered row ──
+        cards = QHBoxLayout()
+        cards.setSpacing(18)
+        cards.addStretch()
+        for tool in [t for t in TOOLS if _user_allowed(t)]:
+            cards.addWidget(ToolCard(tool))
+        cards.addStretch()
+
+        # ── status footer ──
         ok = cfg["shots_exist"] and cfg["db_found"]
         status_parts = []
         if not cfg["shots_exist"]:
             status_parts.append("Shots root not found — mount drive or check settings")
         if not cfg["db_found"]:
             status_parts.append("shot_database.json not found on drive")
-        status_text = "  ·  ".join(status_parts) if status_parts else cfg["shots_root"]
+        status_text = ("●  " + "  ·  ".join(status_parts)) if status_parts else f"●  {cfg['shots_root']}"
         status = QLabel(status_text)
-        status.setStyleSheet(f"color: {OK_COL if ok else ERR_COL}; font-size: 11px;")
+        status.setAlignment(Qt.AlignCenter)
+        status.setStyleSheet(f"color: {OK_COL if ok else ERR_COL}; font-size: 9pt;")
         status.setWordWrap(True)
 
-        # Gear / settings button
-        gear = QPushButton("⚙  Settings")
-        gear.setStyleSheet(
-            f"background: {CARD_BG}; color: {TEXT_SEC}; "
-            f"border: 1px solid {CARD_BRD}; border-radius: 4px; padding: 4px 12px;"
-        )
-        gear.clicked.connect(self._open_settings)
-
-        header_row = QHBoxLayout()
-        header_row.addWidget(title)
-        header_row.addWidget(ver_lbl)
-        header_row.addStretch()
-        header_row.addWidget(gear)
-
-        header = QVBoxLayout()
-        header.setSpacing(4)
-        header.addLayout(header_row)
-        header.addWidget(status)
-
-        # Tool cards — flagship module tools (the legacy gated CLI "Tools" subsection
-        # was retired; Beeble now lives in the Seed Relight app).
-        cards_col = QVBoxLayout()
-        cards_col.setSpacing(10)
-        for tool in [t for t in TOOLS if _user_allowed(t)]:
-            cards_col.addWidget(ToolCard(tool))
-        cards_col.addStretch()
-
-        cards_w = QWidget()
-        cards_w.setLayout(cards_col)
-
-        scroll = QScrollArea()
-        scroll.setWidget(cards_w)
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QFrame.NoFrame)
-
         root = QVBoxLayout()
-        root.setContentsMargins(20, 20, 20, 20)
-        root.setSpacing(16)
-        root.addLayout(header)
-        root.addWidget(scroll)
+        root.setContentsMargins(28, 18, 28, 18)
+        root.addLayout(top)
+        root.addStretch(2)
+        root.addWidget(title)
+        root.addSpacing(4)
+        root.addWidget(tagline)
+        root.addSpacing(34)
+        root.addLayout(cards)
+        root.addStretch(3)
+        root.addWidget(status)
 
         cw = QWidget()
         cw.setLayout(root)
         self.setCentralWidget(cw)
-        self.resize(440, len(TOOLS) * 110 + 160)
+        self.resize(900, 620)
 
     def _open_settings(self) -> None:
         dlg = SettingsDialog(self)
