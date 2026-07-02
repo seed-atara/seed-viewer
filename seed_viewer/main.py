@@ -120,7 +120,7 @@ TOOLS: list[dict] = [
         "desc":    "Contact sheet · Wipe A/B compare · Playback",
         "module":  "seed_viewer.viewer",
         "fn":      "launch",
-        "accent":  "#00E5FF",
+        "accent":  "#7fb2e5",
     },
     {
         "kind":    "module",
@@ -129,7 +129,7 @@ TOOLS: list[dict] = [
         "desc":    "Sign in · claim shots · publish versions · run tools",
         "module":  "seed_viewer.pipeline_panel",
         "fn":      "launch",
-        "accent":  "#7C4DFF",
+        "accent":  "#6a5fae",
     },
     # (Seed Image Edit retired as a standalone tile — it now lives as the "✦ Finish" tab
     #  inside Seed Studio. seed_image_edit.py is still bundled and imported by the studio.)
@@ -140,7 +140,7 @@ TOOLS: list[dict] = [
         "desc":    "Generate (Seedance·Seedream) + Animate (Beeble) · cached playback · auto-prompt/mask · pipeline in→out",
         "module":  "seed_viewer.seed_studio",
         "fn":      "launch",
-        "accent":  "#00E5FF",
+        "accent":  "#e8b33a",
     },
 ]
 
@@ -573,7 +573,7 @@ class LauncherWindow(QMainWindow):
         title.setFont(_tf)
         title.setAlignment(Qt.AlignCenter)
         title.setStyleSheet(f"color: {CY}; background: transparent;")
-        tagline = QLabel("the Seed Film toolchain — view · animate · generate · finish")
+        tagline = QLabel("T H E   F U T U R E   O F   F I L M M A K I N G")
         tagline.setAlignment(Qt.AlignCenter)
         tagline.setStyleSheet(f"color: {TEXT_SEC}; font-size: 11pt; background: transparent;")
 
