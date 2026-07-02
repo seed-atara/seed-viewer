@@ -135,6 +135,15 @@ TOOLS: list[dict] = [
     #  inside Seed Studio. seed_image_edit.py is still bundled and imported by the studio.)
     {
         "kind":    "module",
+        "key":     "pip",
+        "label":   "PIP",
+        "desc":    "The seed inside the fruit — chat with the entire pipeline: shots · check-ins · generate · finish · deliver",
+        "module":  "seed_viewer.seed_pip",
+        "fn":      "launch",
+        "accent":  "#e8b33a",
+    },
+    {
+        "kind":    "module",
         "key":     "seed_studio",
         "label":   "Seed Studio",
         "desc":    "Generate (Seedance·Seedream) + Animate (Beeble) · cached playback · auto-prompt/mask · pipeline in→out",
@@ -455,7 +464,7 @@ class CliRunner(QDialog):
 
 class ToolCard(QFrame):
     """Hero tool card: big glyph, name, description, full-width Open."""
-    _GLYPHS = {"viewer": "▦", "pipeline": "⛁", "seed_studio": "✦"}
+    _GLYPHS = {"viewer": "▦", "pipeline": "⛁", "seed_studio": "✦", "pip": "◉"}
 
     def __init__(self, tool: dict, parent=None):
         super().__init__(parent)
