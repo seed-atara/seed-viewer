@@ -212,13 +212,18 @@ _GEN_BACKEND = ["seedance_client.py", "seed_ark_key.py", "ark_assets.py"]
 # GitHub secret in CI (empty if unset → tool degrades to a "set a key" state).
 _BEEBLE_BACKEND = ["beeble_client.py", "seed_beeble_key.py"]
 
+# PIP backend — seed_anthropic_key.py holds the INTERNAL Anthropic key for the PIP chat;
+# gitignored in BOTH repos, written from the ANTHROPIC_API_KEY GitHub secret in CI.
+# Without this copy the frozen app ships keyless and PIP only works via env/env-file.
+_PIP_BACKEND = ["seed_anthropic_key.py"]
+
 
 def _copy_pipeline(source_repo: Path, dry_run: bool) -> None:
     """Bundle the Artist Hub panel + its backend into seed_viewer/ (gitignored)."""
     jobs = [(source_repo / _PIPELINE_PANEL, SV_PKG / "pipeline_panel.py")]
     jobs += [(source_repo / m, SV_PKG / m)
              for m in _PIPELINE_BACKEND + _PIPELINE_DATA + _CLI_TOOLS + _MODULE_TOOLS
-             + _DELIVERY_BACKEND + _GEN_BACKEND + _BEEBLE_BACKEND]
+             + _DELIVERY_BACKEND + _GEN_BACKEND + _BEEBLE_BACKEND + _PIP_BACKEND]
     for src, dst in jobs:
         if not src.exists():
             print(f"  WARN: {src.name} not found — skip (artist hub may not load)")
