@@ -198,7 +198,7 @@ _DELIVERY_BACKEND = ["deliver_stills.py", "aspera_send.py", "aspera_pull.py"]
 # own launch()/main() and resolve sibling modules via sys.path, so no patching needed).
 # mcp_server.py is the pipeline MCP server run by `SeedViewer.exe --mcp` (stdlib-only;
 # imports the bundled hub_client/pipeline_* as top-level, same as the Artist Hub backend).
-_MODULE_TOOLS = ["seed_image_edit.py", "cine_cam.py", "mcp_server.py", "seed_gen.py", "seed_relight.py",
+_MODULE_TOOLS = ["seed_theme.py", "seed_image_edit.py", "cine_cam.py", "mcp_server.py", "seed_gen.py", "seed_relight.py",
                  "seed_studio.py", "seed_player.py", "auto_prompt.py", "seg_figure.py"]
 
 # Generative backend (Seedance video / Seedream image) — shared by seed_gen + the MCP.

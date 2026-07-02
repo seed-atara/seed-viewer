@@ -58,7 +58,7 @@ a = Analysis(
         # client-delivery backend — imported bare (lazily) by mcp_server's stage/send tools
         "deliver_stills", "aspera_send", "aspera_pull",
         # generative backend — Seedance/Seedream client + internal key (bare imports)
-        "seedance_client", "seed_ark_key", "ark_assets",
+        "seedance_client", "seed_ark_key", "ark_assets", "seed_theme",
         # Beeble backend — SwitchX client + internal key (bare imports). seed_relight/seed_studio
         # reuse sibling modules via bare imports, so those must be importable bare too.
         "beeble_client", "seed_beeble_key", "seed_gen", "seed_relight",

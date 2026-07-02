@@ -144,27 +144,33 @@ TOOLS: list[dict] = [
     },
 ]
 
-# ── Palette ────────────────────────────────────────────────────────────────────
-
-# SEED design system (GMUNK-grounded: deep black, cyan hero, amber energy accent)
-BG       = "#04060A"
-CARD_BG  = "#08141B"
-CARD_BRD = "#0B3540"
-TEXT_PRI = "#CFEAF2"
-TEXT_SEC = "#3C5A64"
-OK_COL   = "#00E5FF"
-ERR_COL  = "#FFB347"
-CY       = "#00E5FF"
-AM       = "#FFB347"
+# ── Palette — SEED design system (single source of truth: seed_theme) ─────────
+try:
+    import seed_theme as _theme          # bundled next to the other pipeline modules
+    from seed_theme import C as _C
+    BG, CARD_BG, CARD_BRD = _C.BG0, _C.BG1, _C.STROKE
+    TEXT_PRI, TEXT_SEC = _C.TEXT, _C.TEXT_MUT
+    OK_COL, ERR_COL = _C.ACCENT, _C.WARN
+    CY, AM = _C.ACCENT, _C.WARN
+    ON_ACCENT = _C.ON_ACCENT
+except Exception:                        # dev checkout before prepare_sources ran
+    _theme = None
+    BG, CARD_BG, CARD_BRD = "#0d1117", "#151b23", "#2b3743"
+    TEXT_PRI, TEXT_SEC = "#e6edf3", "#94a3b1"
+    OK_COL, ERR_COL, CY, AM = "#22d3ee", "#fbbf24", "#22d3ee", "#fbbf24"
+    ON_ACCENT = "#06181d"
 
 
 def _apply_palette(app: QApplication) -> None:
+    if _theme is not None:
+        _theme.apply(app)                # Fusion + palette + font + master QSS
+        return
     app.setStyle("Fusion")
     pal = QPalette()
     pal.setColor(QPalette.Window,          QColor(BG))
     pal.setColor(QPalette.WindowText,      QColor(TEXT_PRI))
     pal.setColor(QPalette.Base,            QColor(CARD_BG))
-    pal.setColor(QPalette.AlternateBase,   QColor("#252525"))
+    pal.setColor(QPalette.AlternateBase,   QColor(CARD_BG))
     pal.setColor(QPalette.Text,            QColor(TEXT_PRI))
     pal.setColor(QPalette.Button,          QColor(CARD_BG))
     pal.setColor(QPalette.ButtonText,      QColor(TEXT_PRI))
@@ -217,8 +223,8 @@ class SettingsDialog(QDialog):
             edit.setText(current.get(key, ""))
             edit.setPlaceholderText(placeholder)
             edit.setToolTip(tip)
-            edit.setStyleSheet(f"background: {CARD_BG}; color: {TEXT_PRI}; "
-                               f"border: 1px solid {CARD_BRD}; border-radius: 4px; padding: 4px;")
+            if key.endswith(("_API_KEY", "_SK", "_SECRET", "_TOKEN")):
+                edit.setEchoMode(QLineEdit.Password)   # never show secrets in the clear
             form.addRow(f"{label}:", edit)
             self._fields[key] = edit
 
@@ -479,14 +485,15 @@ class ToolCard(QFrame):
         desc_lbl.setWordWrap(True)
 
         btn = QPushButton("Open")
-        btn.setFixedWidth(80)
+        btn.setFixedWidth(84)
+        btn.setCursor(Qt.PointingHandCursor)
         btn.setStyleSheet(f"""
             QPushButton {{
                 background: {tool['accent']};
-                color: white;
+                color: {ON_ACCENT};
                 border: none;
-                border-radius: 4px;
-                padding: 6px 12px;
+                border-radius: 6px;
+                padding: 8px 12px;
                 font-weight: bold;
             }}
             QPushButton:hover {{ background: {tool['accent']}CC; }}
