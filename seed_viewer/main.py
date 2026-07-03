@@ -193,6 +193,11 @@ def _apply_palette(app: QApplication) -> None:
 class SettingsDialog(QDialog):
     """Configure drive paths. Saves to ~/.seed-viewer.env."""
 
+    # Beeble/Anthropic keys are NOT configured here: they ship bundled with the app
+    # (seed_beeble_key.py / seed_anthropic_key.py, written from CI secrets at build
+    # time), so a manual field here was both redundant and a footgun, a leftover or
+    # mistyped value in ~/.seed-viewer.env would silently override the working
+    # bundled key with no way for an artist to know why a tool stopped authenticating.
     ENV_VARS = [
         ("SF_USER",        "User",        "Your username (gates tools like Beeble to permitted users)",
          "sholto"),
@@ -201,10 +206,6 @@ class SettingsDialog(QDialog):
         ("SF_SHOTS_ROOT",  "Shots root",  "Root of all shot folders (leave blank = drive root/_SHOTS)",
          ""),
         ("SF_FFMPEG_EXE",  "FFmpeg path", "Full path to ffmpeg binary (leave blank = use bundled)",
-         ""),
-        ("BEEBLE_API_KEY",    "Beeble API key",    "Required to submit Beeble jobs (leave blank if not using)",
-         ""),
-        ("ANTHROPIC_API_KEY", "Anthropic API key", "Only needed for Beeble --auto-prompt (Claude vision)",
          ""),
     ]
 
@@ -304,11 +305,27 @@ class SettingsDialog(QDialog):
             f"For Claude Code instead, run:\n{code_line}")
 
     def _save(self) -> None:
+        # MERGE with whatever is already in the file rather than overwrite it wholesale.
+        # ~/.seed-viewer.env is shared with the Artist Hub's own Setup dialog (different
+        # keys: SF_HUB_API/SF_SCRATCH/SF_SILO_CACHE_MIB/SF_COMFY_URL) and with manually
+        # added keys (SEED_ARK_AK/SEED_ARK_SK). A naive full rewrite here discards
+        # whatever the OTHER dialog last saved, and vice versa, which looked to artists
+        # like "my settings keep reverting to defaults" after using both screens.
         env_path = Path.home() / ".seed-viewer.env"
-        lines = ["# Seed Viewer — path configuration (auto-generated)"]
+        current: dict[str, str] = {}
+        if env_path.exists():
+            for line in env_path.read_text(encoding="utf-8").splitlines():
+                line = line.strip()
+                if line and not line.startswith("#") and "=" in line:
+                    k, _, v = line.partition("=")
+                    current[k.strip()] = v.strip()
         for key, label, tip, _ in self.ENV_VARS:
-            val = self._fields[key].text().strip()
-            lines.append(f"# {tip}")
+            current[key] = self._fields[key].text().strip()
+        tips = {key: tip for key, label, tip, _ in self.ENV_VARS}
+        lines = ["# Seed Viewer — path configuration (auto-generated)"]
+        for key, val in current.items():
+            if key in tips:
+                lines.append(f"# {tips[key]}")
             lines.append(f"{key}={val}")
             lines.append("")
         env_path.write_text("\n".join(lines), encoding="utf-8")
