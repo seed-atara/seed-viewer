@@ -204,7 +204,7 @@ _MODULE_TOOLS = ["seed_theme.py", "seed_pip.py", "seed_image_edit.py", "cine_cam
                  # point/spec/workflow (see seed_viewer_win_v14.spec, release-personal.yml);
                  # harmless to bundle here too since seed_viewer/main.py's TOOLS list and
                  # entry point never reference it, so the team's SeedViewer.exe is unaffected.
-                 "seed_theme_v14.py", "seed_console.py", "shot_viewer_v14.py"]
+                 "seed_theme_v14.py", "seed_console.py", "shot_viewer_v14.py", "seed_studio_v14.py"]
 
 # Generative backend (Seedance video / Seedream image) — shared by seed_gen + the MCP.
 # seed_ark_key.py holds the INTERNAL api key; it is gitignored in BOTH repos and written
