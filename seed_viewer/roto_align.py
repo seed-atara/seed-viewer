@@ -613,6 +613,11 @@ class AlignWindow(QMainWindow):
         wai_row.addWidget(self.wai_label, 1); wai_row.addWidget(self.btn_use_wai)
         gl.addLayout(wai_row)
 
+        pip_btn = QPushButton("Ask PIP")
+        pip_btn.setToolTip("Ask PIP: chat with the pipeline about this shot")
+        pip_btn.clicked.connect(self._ask_pip)
+        gl.addWidget(pip_btn)
+
         self.seq_info    = QLabel("plate: 0   mask: 0")
         self.coverage_lbl = QLabel("")
         self.coverage_lbl.setWordWrap(True)
@@ -960,6 +965,14 @@ class AlignWindow(QMainWindow):
     def _next_shot(self) -> None:
         if self.shot_idx < len(self.shots) - 1:
             self.shot_combo.setCurrentIndex(self.shot_idx + 1)
+
+    def _ask_pip(self) -> None:
+        try:
+            import seed_pip
+            shot = self.shot_combo.currentText() or "(no shot)"
+            seed_pip.open_pip(f"Roto Align, shot {shot}")
+        except Exception as e:
+            self.statusBar().showMessage(f"PIP could not open: {e}", 5000)
 
     def _load_shot(self, idx: int) -> None:
         if idx < 0 or idx >= len(self.shots):
