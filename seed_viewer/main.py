@@ -15,8 +15,10 @@ from __future__ import annotations
 
 import importlib
 import os
+import shutil
 import subprocess
 import sys
+import tempfile
 import threading
 
 # On Windows, PyInstaller --noconsole builds have no console at all.
@@ -40,8 +42,8 @@ from typing import Callable
 from PySide6.QtCore import Qt, Signal, QObject, QThread, QTimer
 from PySide6.QtGui import QFont, QColor, QPalette
 from PySide6.QtWidgets import (
-    QApplication, QDialog, QDialogButtonBox, QFormLayout,
-    QFrame, QHBoxLayout, QLabel, QLineEdit, QMainWindow, QMessageBox,
+    QApplication, QCheckBox, QDialog, QDialogButtonBox, QFormLayout,
+    QFrame, QHBoxLayout, QLabel, QLineEdit, QListWidget, QMainWindow, QMessageBox,
     QPlainTextEdit, QPushButton, QScrollArea,
     QSizePolicy, QVBoxLayout, QWidget,
 )
@@ -249,6 +251,13 @@ class SettingsDialog(QDialog):
                                   f"border: 1px solid {OK_COL}; border-radius: 4px; padding: 7px 14px;")
         connect_btn.clicked.connect(self._connect_claude)
 
+        reset_btn = QPushButton("🧹  Reset local cache / start clean…")
+        reset_btn.setToolTip("Clear this machine's caches, thumbnails, and logs — for a fresh "
+                             "install, a new freelancer, or troubleshooting stuck local state.")
+        reset_btn.setStyleSheet(f"background: {CARD_BG}; color: {TEXT_PRI}; "
+                                f"border: 1px solid {CARD_BRD}; border-radius: 4px; padding: 7px 14px;")
+        reset_btn.clicked.connect(self._open_reset_dialog)
+
         btns = QDialogButtonBox(QDialogButtonBox.Save | QDialogButtonBox.Cancel)
         btns.accepted.connect(self._save)
         btns.rejected.connect(self.reject)
@@ -262,7 +271,11 @@ class SettingsDialog(QDialog):
         vbox.addLayout(form)
         vbox.addWidget(note)
         vbox.addWidget(connect_btn)
+        vbox.addWidget(reset_btn)
         vbox.addWidget(btns)
+
+    def _open_reset_dialog(self) -> None:
+        ResetStateDialog(self).exec()
 
     def _connect_claude(self) -> None:
         """Register SeedViewer as an MCP server in the artist's Claude Desktop config, and
@@ -329,6 +342,113 @@ class SettingsDialog(QDialog):
             lines.append(f"{key}={val}")
             lines.append("")
         env_path.write_text("\n".join(lines), encoding="utf-8")
+        self.accept()
+
+
+def _dir_size(p: Path) -> int:
+    try:
+        return sum(f.stat().st_size for f in p.rglob("*") if f.is_file())
+    except OSError:
+        return 0
+
+
+def _clean_state_targets() -> list[tuple[str, Path]]:
+    """Every local cache/log/temp path that is safe to delete unconditionally: pure
+    derived data the app rebuilds on demand. Deliberately excludes checkout sandboxes
+    (SF_SCRATCH/work/*), generated render output, saved cinematic looks, and any local
+    pipeline_state.db fallback — those can hold real, unsynced artist work and must
+    never be part of a one-click wipe."""
+    home = Path.home()
+    temp = Path(tempfile.gettempdir())
+    scratch = Path(os.environ.get("SF_SCRATCH") or (temp / "seed_film"))
+    candidates = [
+        ("Local media cache", scratch / "cache"),
+        ("Viewer thumbnail cache", temp / "ks_shot_viewer"),
+        ("Studio thumbnail cache", home / ".seed_studio_thumbs"),
+        ("ARK asset lookup index", home / ".seed_ark_cache.json"),
+        ("PIP daily usage counter", home / ".seed_pip_usage.json"),
+        ("Viewer log", temp / "seed_viewer.log"),
+        ("Studio log", temp / "seed_studio.log"),
+        ("Crash log", home / "seedstudio_crash.log"),
+        ("Debug test frame", temp / "sv_test_frame.jpg"),
+        ("Updater staging log", temp / "seedviewer_update.log"),
+        ("Updater staging script", temp / "seedviewer_update.bat"),
+        ("Updater staging script", temp / "seedviewer_update.sh"),
+        ("Local login secret (regenerates automatically)", HERE / ".hub_secret"),
+    ]
+    candidates += [("Cinematic preview frame", p) for p in temp.glob("_cine_*_f0.png")]
+    return [(label, p) for label, p in candidates if p.exists()]
+
+
+class ResetStateDialog(QDialog):
+    """Lists every safe-to-delete local cache/log/temp file and clears them on
+    confirm — for a fresh install, handing a machine to a new freelancer, or
+    troubleshooting local state that's stuck or corrupted. Never touches checkout
+    sandboxes, generated output, saved looks, or a local state database; those can
+    hold real work. Settings (~/.seed-viewer.env) is opt-in via its own checkbox
+    since clearing it means re-running Setup."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Reset local cache")
+        self.setMinimumWidth(520)
+        self._targets = _clean_state_targets()
+
+        v = QVBoxLayout(self)
+        total = sum((_dir_size(p) if p.is_dir() else p.stat().st_size) for _, p in self._targets)
+        v.addWidget(QLabel(f"This will delete {len(self._targets)} local cache/log "
+                           f"item(s), about {total / 1e6:.1f} MB:"))
+
+        lst = QListWidget()
+        for label, p in self._targets:
+            lst.addItem(f"{label}  —  {p}")
+        lst.setMaximumHeight(220)
+        v.addWidget(lst)
+
+        self._also_settings = QCheckBox("Also reset Settings (User / Drive root / Shots "
+                                        "root / FFmpeg path) — you'll need to run Setup again")
+        v.addWidget(self._also_settings)
+
+        note = QLabel("NOT touched: any in-progress checkout sandboxes, your generated "
+                      "renders, and saved cinematic looks — those can hold real work.")
+        note.setWordWrap(True)
+        note.setStyleSheet(f"color: {TEXT_SEC}; font-size: 11px;")
+        v.addWidget(note)
+
+        btns = QDialogButtonBox(QDialogButtonBox.Yes | QDialogButtonBox.Cancel)
+        btns.button(QDialogButtonBox.Yes).setText("Delete these")
+        for btn in btns.buttons():
+            btn.setStyleSheet(f"background: {CARD_BG}; color: {TEXT_PRI}; "
+                               f"border: 1px solid {CARD_BRD}; border-radius: 4px; padding: 6px 16px;")
+        btns.accepted.connect(self._do_reset)
+        btns.rejected.connect(self.reject)
+        v.addWidget(btns)
+
+    def _do_reset(self) -> None:
+        errors = []
+        for label, p in self._targets:
+            try:
+                if p.is_dir():
+                    shutil.rmtree(p)
+                else:
+                    p.unlink()
+            except OSError as e:
+                errors.append(f"{label}: {e}")
+        if self._also_settings.isChecked():
+            env_path = Path.home() / ".seed-viewer.env"
+            try:
+                if env_path.exists():
+                    env_path.unlink()
+            except OSError as e:
+                errors.append(f"Settings: {e}")
+        if errors:
+            QMessageBox.warning(self, "Reset local cache",
+                                "Cleared most items, but some failed:\n" + "\n".join(errors))
+        else:
+            msg = "Local cache cleared."
+            if self._also_settings.isChecked():
+                msg += " Settings were reset too, run Setup again before using the app."
+            QMessageBox.information(self, "Reset local cache", msg)
         self.accept()
 
 
