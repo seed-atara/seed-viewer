@@ -199,7 +199,12 @@ _DELIVERY_BACKEND = ["deliver_stills.py", "aspera_send.py", "aspera_pull.py"]
 # mcp_server.py is the pipeline MCP server run by `SeedViewer.exe --mcp` (stdlib-only;
 # imports the bundled hub_client/pipeline_* as top-level, same as the Artist Hub backend).
 _MODULE_TOOLS = ["seed_theme.py", "seed_pip.py", "seed_image_edit.py", "cine_cam.py", "mcp_server.py", "seed_gen.py", "seed_relight.py",
-                 "seed_studio.py", "seed_player.py", "auto_prompt.py", "seg_figure.py"]
+                 "seed_studio.py", "seed_player.py", "auto_prompt.py", "seg_figure.py",
+                 # Bridge (seed_console.py) — Johannes' PERSONAL build only. Its own entry
+                 # point/spec/workflow (see seed_viewer_win_v14.spec, release-personal.yml);
+                 # harmless to bundle here too since seed_viewer/main.py's TOOLS list and
+                 # entry point never reference it, so the team's SeedViewer.exe is unaffected.
+                 "seed_theme_v14.py", "seed_console.py"]
 
 # Generative backend (Seedance video / Seedream image) — shared by seed_gen + the MCP.
 # seed_ark_key.py holds the INTERNAL api key; it is gitignored in BOTH repos and written
