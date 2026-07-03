@@ -43,6 +43,15 @@ a = Analysis(
         # the Bridge shell itself + its theme
         "seed_viewer.seed_console", "seed_console",
         "seed_viewer.seed_theme_v14", "seed_theme_v14",
+        # the v14 re-chromed stations — reached only via importlib.import_module()
+        # string lookups in seed_console.py's _import_first(), which PyInstaller's
+        # static analyzer cannot trace. Without an explicit entry here they're
+        # silently absent from the frozen build even though prepare_sources.py
+        # copied their .py source in (this is exactly what broke personal-v14.1.0:
+        # every station failed with "no launch() entry point found").
+        "seed_viewer.shot_viewer_v14", "shot_viewer_v14",
+        "seed_viewer.seed_studio_v14", "seed_studio_v14",
+        "seed_viewer.seed_pip_v14", "seed_pip_v14",
         # every tool a mode card can launch, same set the team spec bundles
         "seed_viewer.viewer",
         "seed_viewer.roto_align",
