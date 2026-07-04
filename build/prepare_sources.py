@@ -203,9 +203,9 @@ _MODULE_TOOLS = ["seed_theme.py", "seed_pip.py", "seed_image_edit.py", "cine_cam
                  # SEED BRIDGE console (seed_console.py) — main.py's own home screen since
                  # 2026-07-05 (promoted from a personal-only build once tested and approved;
                  # see seed-bridge-v14 project memory for that build's now-closed history),
-                 # plus the v14-rechromed stations it launches (viewer/studio/pip).
+                 # plus the v14-rechromed stations it launches (viewer/studio/pip/pipeline).
                  "seed_theme_v14.py", "seed_console.py", "shot_viewer_v14.py", "seed_studio_v14.py",
-                 "seed_pip_v14.py"]
+                 "seed_pip_v14.py", "artist_hub_v14.py"]
 
 # Generative backend (Seedance video / Seedream image) — shared by seed_gen + the MCP.
 # seed_ark_key.py holds the INTERNAL api key; it is gitignored in BOTH repos and written

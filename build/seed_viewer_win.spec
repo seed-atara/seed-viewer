@@ -50,6 +50,7 @@ a = Analysis(
         "seed_viewer.shot_viewer_v14", "shot_viewer_v14",
         "seed_viewer.seed_studio_v14", "seed_studio_v14",
         "seed_viewer.seed_pip_v14", "seed_pip_v14",
+        "seed_viewer.artist_hub_v14", "artist_hub_v14",
         # seed_console.py's Settings gear reaches back into main.py for SettingsDialog —
         # being the literal PyInstaller entry-point script does NOT make a module
         # separately importable by its dotted name from other bundled code; verified by

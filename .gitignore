@@ -58,9 +58,12 @@ seed_viewer/seed_pip.py
 seed_viewer/seed_theme.py
 seed_viewer/seed_anthropic_key.py
 seed_viewer/omitted_shots.json
-# Bridge (personal build only — copied from seed-film at build time)
+# SEED BRIDGE console + its v14-rechromed stations (copied from seed-film at
+# build time — this is main.py's own home screen now, see seed-bridge-v14
+# project memory)
 seed_viewer/seed_console.py
 seed_viewer/seed_theme_v14.py
 seed_viewer/shot_viewer_v14.py
 seed_viewer/seed_studio_v14.py
 seed_viewer/seed_pip_v14.py
+seed_viewer/artist_hub_v14.py
