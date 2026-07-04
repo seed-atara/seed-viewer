@@ -41,6 +41,21 @@ a = Analysis(
         "PySide6.QtMultimediaWidgets",
         "PIL._tkinter_finder",
         "numpy",
+        # SEED BRIDGE console (main.py's own home screen since 2026-07-05) + the
+        # v14-rechromed stations it launches via importlib.import_module() — PyInstaller's
+        # static analyzer can't trace those string-based lookups, so each needs an explicit
+        # entry, both bare and seed_viewer.-qualified (learned the hard way: the personal
+        # Bridge build shipped broken twice from missing entries here before this).
+        "seed_viewer.seed_console", "seed_console",
+        "seed_viewer.seed_theme_v14", "seed_theme_v14",
+        "seed_viewer.shot_viewer_v14", "shot_viewer_v14",
+        "seed_viewer.seed_studio_v14", "seed_studio_v14",
+        "seed_viewer.seed_pip_v14", "seed_pip_v14",
+        # seed_console.py's Settings gear reaches back into main.py for SettingsDialog —
+        # being the literal PyInstaller entry-point script does NOT make a module
+        # separately importable by its dotted name from other bundled code; verified by
+        # a real frozen-build test that failed without this exact entry.
+        "seed_viewer.main", "main",
         # dynamically loaded via importlib.import_module() in main.py
         "seed_viewer.viewer",
         "seed_viewer.roto_align",

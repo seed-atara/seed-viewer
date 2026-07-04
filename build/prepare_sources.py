@@ -200,10 +200,10 @@ _DELIVERY_BACKEND = ["deliver_stills.py", "aspera_send.py", "aspera_pull.py"]
 # imports the bundled hub_client/pipeline_* as top-level, same as the Artist Hub backend).
 _MODULE_TOOLS = ["seed_theme.py", "seed_pip.py", "seed_image_edit.py", "cine_cam.py", "mcp_server.py", "seed_gen.py", "seed_relight.py",
                  "seed_studio.py", "seed_player.py", "auto_prompt.py", "seg_figure.py",
-                 # Bridge (seed_console.py) — Johannes' PERSONAL build only. Its own entry
-                 # point/spec/workflow (see seed_viewer_win_v14.spec, release-personal.yml);
-                 # harmless to bundle here too since seed_viewer/main.py's TOOLS list and
-                 # entry point never reference it, so the team's SeedViewer.exe is unaffected.
+                 # SEED BRIDGE console (seed_console.py) — main.py's own home screen since
+                 # 2026-07-05 (promoted from a personal-only build once tested and approved;
+                 # see seed-bridge-v14 project memory for that build's now-closed history),
+                 # plus the v14-rechromed stations it launches (viewer/studio/pip).
                  "seed_theme_v14.py", "seed_console.py", "shot_viewer_v14.py", "seed_studio_v14.py",
                  "seed_pip_v14.py"]
 

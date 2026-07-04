@@ -1,11 +1,13 @@
 """
-main.py — Seed Viewer launcher.
+main.py — Seed Viewer entry point.
 
-Shows a tool selector on startup. Each tool opens in its own window.
-Settings are configured via the gear icon (saved to ~/.seed-viewer.env).
+Shows the SEED BRIDGE console on startup (seed_console.BridgeWindow) — every
+station opens in its own window. Settings are configured via the gear icon
+(saved to ~/.seed-viewer.env).
 
-To add a new tool: add an entry to TOOLS below. Rebuild not required for dev
-testing — run `python -m seed_viewer.main` directly from source.
+To add a new station: add an entry to seed_console.py's MODES (seed-film).
+Rebuild not required for dev testing — run `python -m seed_viewer.main`
+directly from source.
 
 To release to freelancers:
     git tag v0.2.0 && git push origin v0.2.0
@@ -16,10 +18,8 @@ from __future__ import annotations
 import importlib
 import os
 import shutil
-import subprocess
 import sys
 import tempfile
-import threading
 
 # On Windows, PyInstaller --noconsole builds have no console at all.
 # Every subprocess call to a console app (ffmpeg.exe) then causes Windows
@@ -37,49 +37,16 @@ if sys.platform == "win32" and getattr(sys, "frozen", False) and not _MCP_MODE:
         ctypes.windll.user32.ShowWindow(_hwnd, 0)  # SW_HIDE = 0
 
 from pathlib import Path
-from typing import Callable
 
-from PySide6.QtCore import Qt, Signal, QObject, QThread, QTimer
-from PySide6.QtGui import QFont, QColor, QPalette
+from PySide6.QtCore import Qt, Signal, QThread, QTimer
+from PySide6.QtGui import QColor, QPalette
 from PySide6.QtWidgets import (
     QApplication, QCheckBox, QDialog, QDialogButtonBox, QFormLayout,
-    QFrame, QHBoxLayout, QLabel, QLineEdit, QListWidget, QMainWindow, QMessageBox,
-    QPlainTextEdit, QPushButton, QScrollArea,
-    QSizePolicy, QVBoxLayout, QWidget,
+    QLabel, QLineEdit, QListWidget, QMessageBox,
+    QPushButton, QVBoxLayout,
 )
 
 HERE = Path(__file__).parent
-
-
-# ── Users / permissions (gating) ────────────────────────────────────────────────
-
-def _load_agents() -> list[dict]:
-    import json
-    try:
-        return json.loads((HERE / "agents.json").read_text(encoding="utf-8")).get("agents", [])
-    except Exception:
-        return []
-
-
-def _current_user() -> str:
-    return (os.environ.get("SF_USER", "") or "").strip().lower()
-
-
-def _user_allowed(tool: dict) -> bool:
-    """Tools with no 'requires' are open to everyone. Otherwise the configured
-    SF_USER must be a supervisor/producer, or list the permission in their
-    agents.json 'tools'."""
-    req = tool.get("requires")
-    if not req:
-        return True
-    u = _current_user()
-    for a in _load_agents():
-        if a.get("name", "").lower() == u:
-            if a.get("role") in ("supervisor", "producer"):
-                return True
-            perms = a.get("tools") or []
-            return req in perms or "all" in perms
-    return False
 
 
 def _run_tool(modname: str, args: list[str]) -> None:
@@ -96,64 +63,6 @@ def _run_tool(modname: str, args: list[str]) -> None:
     mod = importlib.import_module(f"seed_viewer.{modname}")
     mod.main()
 
-
-# ── Tool registry ──────────────────────────────────────────────────────────────
-# Each entry is either a "module" tool (opens a Qt window via launch())
-# or a "cli" tool (runs a subprocess with configurable args via CliForm).
-#
-# To add a Qt-window tool:
-#   {"kind":"module", "key":"...", "label":"...", "desc":"...",
-#    "module":"seed_viewer.your_module", "fn":"launch", "accent":"#HEX"}
-#
-# To add a CLI tool (beeble, magnific, etc.):
-#   {"kind":"cli", "key":"...", "label":"...", "desc":"...",
-#    "cmd":["python", "-m", "seed_viewer.cli.beeble_submit"],
-#    "args": [
-#        {"flag":"--shot",  "label":"Shot",  "placeholder":"081_PTY_1380"},
-#        {"flag":"--force", "label":"Force", "type":"bool"},
-#    ],
-#    "accent":"#HEX"}
-
-TOOLS: list[dict] = [
-    {
-        "kind":    "module",
-        "key":     "viewer",
-        "label":   "Shot Viewer",
-        "desc":    "Contact sheet · Wipe A/B compare · Playback",
-        "module":  "seed_viewer.viewer",
-        "fn":      "launch",
-        "accent":  "#7fb2e5",
-    },
-    {
-        "kind":    "module",
-        "key":     "pipeline",
-        "label":   "Pipeline · Checkout",
-        "desc":    "Sign in · claim shots · publish versions · run tools",
-        "module":  "seed_viewer.pipeline_panel",
-        "fn":      "launch",
-        "accent":  "#6a5fae",
-    },
-    # (Seed Image Edit retired as a standalone tile — it now lives as the "✦ Finish" tab
-    #  inside Seed Studio. seed_image_edit.py is still bundled and imported by the studio.)
-    {
-        "kind":    "module",
-        "key":     "seed_studio",
-        "label":   "Seed Studio",
-        "desc":    "Generate (Seedance·Seedream) + Animate (Beeble) · cached playback · auto-prompt/mask · pipeline in→out",
-        "module":  "seed_viewer.seed_studio",
-        "fn":      "launch",
-        "accent":  "#e8b33a",
-    },
-    {
-        "kind":    "module",
-        "key":     "pip",
-        "label":   "PIP",
-        "desc":    "The seed inside the fruit — chat with the entire pipeline: shots · check-ins · generate · finish · deliver",
-        "module":  "seed_viewer.seed_pip",
-        "fn":      "launch",
-        "accent":  "#4ade80",
-    },
-]
 
 # ── Palette — SEED design system (single source of truth: seed_theme) ─────────
 try:
@@ -452,324 +361,6 @@ class ResetStateDialog(QDialog):
         self.accept()
 
 
-# ── CLI tool runner ────────────────────────────────────────────────────────────
-
-class _Emitter(QObject):
-    line = Signal(str)
-
-
-class CliRunner(QDialog):
-    """
-    Generic form + live output console for CLI tools.
-    Builds a command line from the tool's 'args' spec and runs it
-    in a background thread, streaming stdout/stderr to the console.
-    """
-
-    def __init__(self, tool: dict, parent=None):
-        super().__init__(parent)
-        self.setWindowTitle(tool["label"])
-        self.setMinimumSize(560, 420)
-        self._tool    = tool
-        self._proc    = None
-        self._fields: dict[str, QLineEdit | QPushButton] = {}
-        self._emit    = _Emitter()
-        self._emit.line.connect(self._append_line)
-
-        # Form
-        form = QFormLayout()
-        form.setSpacing(10)
-        for arg in tool.get("args", []):
-            if arg.get("type") == "bool":
-                btn = QPushButton(arg["label"])
-                btn.setCheckable(True)
-                btn.setStyleSheet(f"background: {CARD_BG}; color: {TEXT_SEC}; "
-                                   f"border: 1px solid {CARD_BRD}; border-radius: 4px; padding: 4px 10px;")
-                btn.toggled.connect(lambda checked, b=btn: b.setStyleSheet(
-                    f"background: {tool['accent']}; color: white; border: none; border-radius: 4px; padding: 4px 10px;"
-                    if checked else
-                    f"background: {CARD_BG}; color: {TEXT_SEC}; border: 1px solid {CARD_BRD}; border-radius: 4px; padding: 4px 10px;"
-                ))
-                form.addRow(f"{arg['label']}:", btn)
-                self._fields[arg["flag"]] = btn
-            else:
-                edit = QLineEdit()
-                edit.setPlaceholderText(arg.get("placeholder", ""))
-                edit.setStyleSheet(f"background: {CARD_BG}; color: {TEXT_PRI}; "
-                                   f"border: 1px solid {CARD_BRD}; border-radius: 4px; padding: 4px;")
-                form.addRow(f"{arg.get('label', arg['flag'])}:", edit)
-                self._fields[arg["flag"]] = edit
-
-        # Console
-        self._console = QPlainTextEdit()
-        self._console.setReadOnly(True)
-        self._console.setStyleSheet(
-            f"background: #0A0A0A; color: #CCCCCC; "
-            f"font-family: 'Iosevka Term', 'Courier New', monospace; font-size: 12px; "
-            f"border: 1px solid {CARD_BRD}; border-radius: 4px;"
-        )
-        self._console.setMinimumHeight(200)
-
-        # Buttons
-        self._run_btn = QPushButton("Run")
-        self._run_btn.setStyleSheet(
-            f"background: {tool['accent']}; color: white; border: none; "
-            f"border-radius: 4px; padding: 8px 20px; font-weight: bold;"
-        )
-        self._run_btn.clicked.connect(self._run)
-
-        self._stop_btn = QPushButton("Stop")
-        self._stop_btn.setEnabled(False)
-        self._stop_btn.setStyleSheet(
-            f"background: {CARD_BG}; color: {TEXT_SEC}; border: 1px solid {CARD_BRD}; "
-            f"border-radius: 4px; padding: 8px 20px;"
-        )
-        self._stop_btn.clicked.connect(self._stop)
-
-        btn_row = QHBoxLayout()
-        btn_row.addStretch()
-        btn_row.addWidget(self._run_btn)
-        btn_row.addWidget(self._stop_btn)
-
-        vbox = QVBoxLayout(self)
-        vbox.setContentsMargins(20, 16, 20, 16)
-        vbox.setSpacing(12)
-        vbox.addLayout(form)
-        vbox.addWidget(self._console)
-        vbox.addLayout(btn_row)
-
-    def _build_cmd(self) -> list[str]:
-        tm = self._tool.get("tool_module")
-        if tm:
-            # frozen: re-invoke the exe; dev: re-invoke the launcher module
-            if getattr(sys, "frozen", False):
-                cmd = [sys.executable, "--tool", tm]
-            else:
-                cmd = [sys.executable, "-m", "seed_viewer.main", "--tool", tm]
-        else:
-            cmd = list(self._tool["cmd"])
-        for flag, widget in self._fields.items():
-            if isinstance(widget, QPushButton):
-                if widget.isChecked():
-                    cmd.append(flag)
-            else:
-                val = widget.text().strip()
-                if val:
-                    cmd.extend([flag, val])
-        return cmd
-
-    def _run(self) -> None:
-        cmd = self._build_cmd()
-        self._console.clear()
-        self._console.appendPlainText("$ " + " ".join(cmd))
-        self._run_btn.setEnabled(False)
-        self._stop_btn.setEnabled(True)
-
-        def _worker():
-            try:
-                self._proc = subprocess.Popen(
-                    cmd,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.STDOUT,
-                    text=True,
-                    bufsize=1,
-                )
-                for line in self._proc.stdout:
-                    self._emit.line.emit(line.rstrip())
-                self._proc.wait()
-                self._emit.line.emit(f"\n[exit {self._proc.returncode}]")
-            except Exception as e:
-                self._emit.line.emit(f"ERROR: {e}")
-            finally:
-                self._emit.line.emit("")
-                self._run_btn.setEnabled(True)
-                self._stop_btn.setEnabled(False)
-
-        threading.Thread(target=_worker, daemon=True).start()
-
-    def _stop(self) -> None:
-        if self._proc and self._proc.poll() is None:
-            self._proc.terminate()
-
-    def _append_line(self, text: str) -> None:
-        self._console.appendPlainText(text)
-        self._console.verticalScrollBar().setValue(
-            self._console.verticalScrollBar().maximum()
-        )
-
-
-# ── Tool card ──────────────────────────────────────────────────────────────────
-
-class ToolCard(QFrame):
-    """Hero tool card: big glyph, name, description, full-width Open."""
-    _GLYPHS = {"viewer": "▦", "pipeline": "⛁", "seed_studio": "✦", "pip": "◉"}
-
-    def __init__(self, tool: dict, parent=None):
-        super().__init__(parent)
-        self._tool   = tool
-        self._window = None
-        ac = tool["accent"]
-
-        self.setFixedSize(250, 270)
-        self.setStyleSheet(f"""
-            ToolCard {{
-                background: {CARD_BG};
-                border: 1px solid {CARD_BRD};
-                border-radius: 14px;
-            }}
-            ToolCard:hover {{ border: 1px solid {ac}; }}
-        """)
-
-        glyph = QLabel(self._GLYPHS.get(tool.get("key", ""), "◇"))
-        glyph.setAlignment(Qt.AlignCenter)
-        glyph.setStyleSheet(f"color: {ac}; font-size: 34pt; background: transparent; border: none;")
-
-        name_lbl = QLabel(tool["label"])
-        name_lbl.setAlignment(Qt.AlignCenter)
-        name_lbl.setStyleSheet(f"color: {TEXT_PRI}; font-size: 13pt; font-weight: 700; "
-                               "background: transparent; border: none;")
-
-        desc_lbl = QLabel(tool["desc"])
-        desc_lbl.setAlignment(Qt.AlignHCenter | Qt.AlignTop)
-        desc_lbl.setWordWrap(True)
-        desc_lbl.setStyleSheet(f"color: {TEXT_SEC}; font-size: 9pt; "
-                               "background: transparent; border: none;")
-
-        btn = QPushButton("Open")
-        btn.setCursor(Qt.PointingHandCursor)
-        btn.setFixedHeight(38)
-        btn.setStyleSheet(f"""
-            QPushButton {{
-                background: {ac};
-                color: {ON_ACCENT};
-                border: none;
-                border-radius: 8px;
-                font-weight: bold;
-                font-size: 11pt;
-                letter-spacing: 1px;
-            }}
-            QPushButton:hover {{ background: {ac}CC; }}
-        """)
-        btn.clicked.connect(self._open)
-
-        lay = QVBoxLayout(self)
-        lay.setContentsMargins(18, 22, 18, 18)
-        lay.setSpacing(10)
-        lay.addWidget(glyph)
-        lay.addWidget(name_lbl)
-        lay.addWidget(desc_lbl, 1)
-        lay.addWidget(btn)
-
-    def _open(self) -> None:
-        kind = self._tool.get("kind", "module")
-
-        if kind == "cli":
-            dlg = CliRunner(self._tool, self.window())
-            dlg.show()
-            return
-
-        # module tool — open Qt window
-        if self._window and self._window.isVisible():
-            self._window.raise_()
-            self._window.activateWindow()
-            return
-        try:
-            mod = importlib.import_module(self._tool["module"])
-            fn  = getattr(mod, self._tool["fn"])
-            self._window = fn()
-            if self._window:
-                self._window.show()
-        except ImportError as e:
-            from PySide6.QtWidgets import QMessageBox
-            QMessageBox.critical(self, "Import error",
-                                 f"Could not load {self._tool['module']}:\n{e}")
-
-
-# ── Launcher window ────────────────────────────────────────────────────────────
-
-
-class LauncherWindow(QMainWindow):
-    def __init__(self):
-        super().__init__()
-        self.setWindowTitle("SEEDSTUDIO")
-
-        from seed_viewer.paths import config_summary
-        cfg = config_summary()
-        from seed_viewer import updater
-        _ver = updater.installed_version()
-        _vtext = _ver if str(_ver).startswith("v") else f"v{_ver}"
-        self.setWindowTitle(f"SEEDSTUDIO {_vtext}")
-
-        # ── top utility row (version left · settings right) ──
-        ver_lbl = QLabel(_vtext)
-        ver_lbl.setStyleSheet(f"color: {TEXT_SEC}; font-size: 10pt;")
-        gear = QPushButton("⚙  Settings")
-        gear.setCursor(Qt.PointingHandCursor)
-        gear.setStyleSheet(f"background: transparent; color: {TEXT_SEC}; "
-                           f"border: 1px solid {CARD_BRD}; border-radius: 6px; padding: 6px 14px;")
-        gear.clicked.connect(self._open_settings)
-        top = QHBoxLayout()
-        top.addWidget(ver_lbl)
-        top.addStretch()
-        top.addWidget(gear)
-
-        # ── hero brand block, centered ──
-        title = QLabel("◢ SEEDSTUDIO")
-        _tf = QFont("", 30, QFont.Black)
-        _tf.setLetterSpacing(QFont.AbsoluteSpacing, 6)
-        title.setFont(_tf)
-        title.setAlignment(Qt.AlignCenter)
-        title.setStyleSheet(f"color: {CY}; background: transparent;")
-        tagline = QLabel("T H E   F U T U R E   O F   F I L M M A K I N G")
-        tagline.setAlignment(Qt.AlignCenter)
-        tagline.setStyleSheet(f"color: {TEXT_SEC}; font-size: 11pt; background: transparent;")
-
-        # ── tool cards, centered row ──
-        cards = QHBoxLayout()
-        cards.setSpacing(18)
-        cards.addStretch()
-        for tool in [t for t in TOOLS if _user_allowed(t)]:
-            cards.addWidget(ToolCard(tool))
-        cards.addStretch()
-
-        # ── status footer ──
-        ok = cfg["shots_exist"] and cfg["db_found"]
-        status_parts = []
-        if not cfg["shots_exist"]:
-            status_parts.append("Shots root not found — mount drive or check settings")
-        if not cfg["db_found"]:
-            status_parts.append("shot_database.json not found on drive")
-        status_text = ("●  " + "  ·  ".join(status_parts)) if status_parts else (
-            f"●  {cfg['shots_root']}     ·     SEED STUDIOS — AI IS OUR PRACTICE")
-        status = QLabel(status_text)
-        status.setAlignment(Qt.AlignCenter)
-        status.setStyleSheet(f"color: {OK_COL if ok else ERR_COL}; font-size: 9pt;")
-        status.setWordWrap(True)
-
-        root = QVBoxLayout()
-        root.setContentsMargins(28, 18, 28, 18)
-        root.addLayout(top)
-        root.addStretch(2)
-        root.addWidget(title)
-        root.addSpacing(4)
-        root.addWidget(tagline)
-        root.addSpacing(34)
-        root.addLayout(cards)
-        root.addStretch(3)
-        root.addWidget(status)
-
-        cw = QWidget()
-        cw.setLayout(root)
-        self.setCentralWidget(cw)
-        self.resize(900, 620)
-
-    def _open_settings(self) -> None:
-        dlg = SettingsDialog(self)
-        if dlg.exec() == QDialog.Accepted:
-            from PySide6.QtWidgets import QMessageBox
-            QMessageBox.information(self, "Settings saved",
-                                    "Paths saved. Restart the viewer for changes to take effect.")
-
-
 # ── Entry point ────────────────────────────────────────────────────────────────
 
 def _show_debug_dialog(app: "QApplication") -> None:
@@ -925,8 +516,18 @@ def main():
         return
 
     app = QApplication.instance() or QApplication(sys.argv)
-    _apply_palette(app)
-    win = LauncherWindow()
+    # Tested and promoted 2026-07-05: the "SEED BRIDGE" console (built and proven as a
+    # personal-only build first) is now the app's actual home screen, replacing the old
+    # tile-grid LauncherWindow. seed_theme_v14 layers its own rules on top of seed_theme's
+    # (see seed_theme_v14.apply()'s own docstring) — falls back to the plain palette if
+    # unavailable for any reason, same resilience _apply_palette already had on its own.
+    try:
+        import seed_theme_v14 as _v14_theme
+        _v14_theme.apply(app)
+    except Exception:
+        _apply_palette(app)
+    import seed_console
+    win = seed_console.launch()
     win.show()
     # auto-update: background check; prompts on the main thread if a newer build exists
     win._update_checker = _UpdateChecker()
