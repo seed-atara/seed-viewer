@@ -71,13 +71,21 @@ def _patch_imports(src: str, is_roto: bool = False) -> str:
         src,
         flags=re.MULTILINE,
     )
-    # Patch load_db() to delegate to seed_viewer.paths so it always reads from the drive.
+    # Patch load_db()'s Killing-Satoshi branch to delegate to seed_viewer.paths so it
+    # always reads from the drive (with caching/error-handling) — the microdrama branch
+    # (project_registry-gated, unreachable until a microdrama project is registered)
+    # is left untouched. See the NOTE comment above load_db() in shot_viewer_qt.py if
+    # this pattern ever stops matching after a future edit to that function.
     src = re.sub(
         r"def load_db\(\) -> dict:\n"
+        r"    if _proj is not None and _proj\.get_active_project\(\)\.type == [\"']microdrama[\"']:\n"
+        r"        return _load_db_microdrama\(_proj\.get_active_project\(\)\)\n"
         r"    if DB_PATH\.exists\(\):\n"
         r"        return json\.loads\(DB_PATH\.read_text\(encoding=[\"']utf-8[\"']\)\)\n"
         r"    return \{\}",
         "def load_db() -> dict:\n"
+        "    if _proj is not None and _proj.get_active_project().type == \"microdrama\":\n"
+        "        return _load_db_microdrama(_proj.get_active_project())\n"
         "    from seed_viewer.paths import _load_db as _sv_load_db\n"
         "    return _sv_load_db()",
         src,
@@ -205,7 +213,7 @@ _MODULE_TOOLS = ["seed_theme.py", "seed_pip.py", "seed_image_edit.py", "cine_cam
                  # see seed-bridge-v14 project memory for that build's now-closed history),
                  # plus the v14-rechromed stations it launches (viewer/studio/pip/pipeline).
                  "seed_theme_v14.py", "seed_console.py", "shot_viewer_v14.py", "seed_studio_v14.py",
-                 "seed_pip_v14.py", "artist_hub_v14.py"]
+                 "seed_pip_v14.py", "artist_hub_v14.py", "project_registry.py"]
 
 # Generative backend (Seedance video / Seedream image) — shared by seed_gen + the MCP.
 # seed_ark_key.py holds the INTERNAL api key; it is gitignored in BOTH repos and written

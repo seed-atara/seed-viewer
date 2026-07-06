@@ -78,6 +78,11 @@ except ImportError:
     def load_omitted(): return set()
     def load_ccb():     return set()
 
+try:
+    import project_registry as _proj
+except ImportError:
+    _proj = None
+
 # ── Resolutions ───────────────────────────────────────────────────────────────
 
 RESOLUTIONS = {"HD": (1280, 720), "UHD": (1920, 1080)}
@@ -503,9 +508,46 @@ class FrameCache:
 
 # ── DB / filesystem helpers ───────────────────────────────────────────────────
 
+# Killing Satoshi (the only project until a microdrama show is registered in
+# projects.json) always takes the branch below, unchanged — see project_registry.py.
+# NOTE: prepare_sources.py's _patch_imports() pattern-matches this function's body
+# verbatim to redirect the frozen build's non-microdrama branch to
+# seed_viewer.paths._load_db() (drive resolution + caching) — if you reshape this
+# function, update that regex too, or the frozen app silently loses the patch.
 def load_db() -> dict:
+    if _proj is not None and _proj.get_active_project().type == "microdrama":
+        return _load_db_microdrama(_proj.get_active_project())
     from seed_viewer.paths import _load_db as _sv_load_db
     return _sv_load_db()
+
+def _load_db_microdrama(project) -> dict:
+    """Beats (kind='shot') for the active microdrama project, synthesized into the
+    same shape shot_database.json's real entries use. Two things grid() doesn't
+    tell you for free:
+    1. "shotcode" is REQUIRED (not just "sequence"/"archived" — _refresh()'s sort
+       key indexes s["shotcode"] directly, no .get() fallback; missing it means
+       the sequence dropdown populates fine but the shot list silently stays empty).
+    2. grid() returns EVERY entity in the project, not just beats — characters/
+       locations/episode-masters (kind='asset') come back too, with seq=None
+       (they're not inside any episode). Mixing None and string "sequence"
+       values in the same list crashes _refresh()'s sort ('<' not supported
+       between NoneType and str). Filter to rows with a real seq — only beats
+       have one; that's the actual "is this a shot" signal, not the kind column."""
+    try:
+        import pipeline_state as ps
+    except ImportError:
+        return {}
+    store = ps.StateStore()
+    try:
+        rows = store.grid(project=project.project)
+    finally:
+        store.close()
+    db = {}
+    for r in rows:
+        if not r["seq"]:
+            continue
+        db.setdefault(r["shot"], {"shotcode": r["shot"], "sequence": r["seq"], "archived": False})
+    return db
 
 def load_delivered_shots() -> set:
     log = _REPO / "delivery_log.json"
@@ -519,9 +561,28 @@ def load_delivered_shots() -> set:
 
 @lru_cache(maxsize=512)
 def find_shot_folder(shotcode: str) -> Optional[Path]:
+    # Same zero-change guarantee as load_db() above — inert for Killing Satoshi.
+    if _proj is not None and _proj.get_active_project().type == "microdrama":
+        return _find_shot_folder_microdrama(shotcode)
     if _USE_PIPELINE:
         return _pipeline_find_shot_folder(shotcode)
     return None
+
+def _find_shot_folder_microdrama(shotcode: str) -> Optional[Path]:
+    """The beat's registered entity path (set at import time by microdrama_import.py) —
+    same {SHOTS_ROOT}/MDR_<SHOW>/<EPISODE>/<BEAT>/ layout a real shot uses, so the
+    existing genai/plate/comp globs in LAYERS resolve unmodified."""
+    try:
+        import pipeline_state as ps
+    except ImportError:
+        return None
+    store = ps.StateStore()
+    try:
+        detail = store.show(shotcode)
+    finally:
+        store.close()
+    path = (detail.get("entity") or {}).get("path")
+    return Path(path) if path else None
 
 def find_all_versions(sf: Path, layer: str) -> list[Path]:
     spec = LAYERS.get(layer)
@@ -1075,6 +1136,14 @@ class ShotBrowser(QWidget):
         self._layer_cb = QComboBox(filter_bar)
         self._layer_cb.addItems(all_labels)
         self._layer_cb.setCurrentText("Plate HD")
+        # Killing Satoshi shots always have a Plate — microdrama beats never do
+        # (they only ever have "genai" content). "Cascade" tries comp/layout/
+        # wai/ffs/plate in order, so it finds whatever actually exists either way.
+        try:
+            if _proj is not None and _proj.get_active_project().type == "microdrama":
+                self._layer_cb.setCurrentText("Cascade")
+        except Exception:
+            pass
         self._layer_cb.setFixedWidth(90)
         self._layer_cb.setFixedHeight(20)
         self._layer_cb.currentTextChanged.connect(lambda _: self._refresh())
@@ -2590,6 +2659,16 @@ class ShotViewerApp(QMainWindow):
 
         self._layer_a_key = "plate_hd"
         self._layer_b_key = "wai"
+        # Killing Satoshi shots always have a Plate for layer A — microdrama
+        # beats never do (only "genai"/wai content exists), so the main A/B
+        # viewer would show a blank A side by default. Same fix as
+        # ShotBrowser's _layer_cb default, applied to the main viewer's own
+        # separate layer-A state.
+        try:
+            if _proj is not None and _proj.get_active_project().type == "microdrama":
+                self._layer_a_key = "wai"
+        except Exception:
+            pass
         self._vers_a: list[Path] = []
         self._vers_b: list[Path] = []
         self._ver_a_idx = 0
@@ -3353,8 +3432,29 @@ class ShotViewerApp(QMainWindow):
         self._shot_lbl.setText(sc)
 
         if sc not in self._seq_shots:
-            info = self.db.get(sc, {})
-            seq  = info.get("sequence","")
+            # BUG (found 2026-07-06): this used to always derive `seq` from the
+            # clicked shot's own db entry and force the browser into it via
+            # set_seq() below — even when the browser was deliberately showing
+            # "ALL". Since self._seq_shots starts empty and is never populated
+            # with the full "ALL" superset anywhere else, the very FIRST click
+            # after selecting "ALL" always took this branch, silently snapping
+            # the browser's dropdown away from "ALL" to that one shot's
+            # sequence — "select ALL, click a shot, only a subset shows after."
+            # Fix: respect whatever the browser's sequence filter ACTUALLY is.
+            browser_seq = self._browser.current_seq()
+            if browser_seq == "ALL":
+                shots = sorted(
+                    self.db.values(),
+                    key=lambda s: (
+                        s.get("sequence", ""),
+                        int(s["shotcode"].split("_")[-1])
+                        if s.get("shotcode", "").split("_")[-1].isdigit() else 0,
+                    ))
+                self._seq_shots = [s["shotcode"] for s in shots]
+                seq = ""   # stay on ALL — do not call set_seq() below
+            else:
+                info = self.db.get(sc, {})
+                seq  = info.get("sequence","")
             if seq:
                 shots = sorted(
                     [s["shotcode"] for s in self.db.values() if s.get("sequence") == seq],

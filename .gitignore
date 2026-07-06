@@ -5,6 +5,7 @@ __pycache__/
 .Python
 build/dist/
 build/work/
+build/ffmpeg/
 dist/
 *.egg-info/
 .env.local
@@ -67,3 +68,4 @@ seed_viewer/shot_viewer_v14.py
 seed_viewer/seed_studio_v14.py
 seed_viewer/seed_pip_v14.py
 seed_viewer/artist_hub_v14.py
+seed_viewer/project_registry.py
