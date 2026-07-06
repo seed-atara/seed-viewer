@@ -36,6 +36,23 @@ if sys.platform == "win32" and getattr(sys, "frozen", False) and not _MCP_MODE:
     if _hwnd:
         ctypes.windll.user32.ShowWindow(_hwnd, 0)  # SW_HIDE = 0
 
+# Declare per-monitor DPI awareness BEFORE QApplication exists. Without this,
+# a frozen PyInstaller exe carries no manifest telling Windows it's DPI-aware,
+# so on any scaled display (125%/150% — most laptops) Windows falls back to
+# bitmap-stretching the whole rendered window: blurry text, and the OS-drawn
+# title bar (correctly scaled) ends up mismatched against Qt's own client-area
+# layout (rendered assuming 96 DPI, then stretched) — this is what made
+# content look cut off/cramped even though Qt's own layout maths were fine.
+if sys.platform == "win32":
+    import ctypes
+    try:
+        ctypes.windll.shcore.SetProcessDpiAwareness(2)   # PROCESS_PER_MONITOR_DPI_AWARE
+    except (AttributeError, OSError):
+        try:
+            ctypes.windll.user32.SetProcessDPIAware()     # Windows 7/8 fallback
+        except (AttributeError, OSError):
+            pass
+
 from pathlib import Path
 
 from PySide6.QtCore import Qt, Signal, QThread, QTimer
@@ -515,6 +532,14 @@ def main():
         _run_tool(sys.argv[2], sys.argv[3:])
         return
 
+    if QApplication.instance() is None:
+        # Companion to the SetProcessDpiAwareness() call above: on a fractional
+        # Windows scale factor (125%/150%, not just 100%/200%), Qt's default
+        # rounding can still introduce off-by-a-pixel blur — PassThrough uses
+        # the exact scale factor instead of rounding it to the nearest integer.
+        from PySide6.QtCore import Qt as _Qt
+        QApplication.setHighDpiScaleFactorRoundingPolicy(
+            _Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
     app = QApplication.instance() or QApplication(sys.argv)
     # Tested and promoted 2026-07-05: the "SEED BRIDGE" console (built and proven as a
     # personal-only build first) is now the app's actual home screen, replacing the old
