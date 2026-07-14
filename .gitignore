@@ -33,6 +33,8 @@ seed_viewer/hub_client.py
 seed_viewer/beeble_submit.py
 seed_viewer/magnific_submit.py
 seed_viewer/mcp_server.py
+seed_viewer/seed_lens.py
+seed_viewer/seed_lens_gui.py
 seed_viewer/seed_image_edit.py
 seed_viewer/cine_cam.py
 # client-delivery backend (private)
