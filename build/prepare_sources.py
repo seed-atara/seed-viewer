@@ -208,6 +208,10 @@ _DELIVERY_BACKEND = ["deliver_stills.py", "aspera_send.py", "aspera_pull.py"]
 # imports the bundled hub_client/pipeline_* as top-level, same as the Artist Hub backend).
 _MODULE_TOOLS = ["seed_theme.py", "seed_pip.py", "seed_image_edit.py", "cine_cam.py", "mcp_server.py", "seed_gen.py", "seed_relight.py",
                  "seed_lens.py", "seed_lens_gui.py",   # SEED LENS: parametric lens pipeline (pure numpy apply; GUI + MCP)
+                 # SEED ATMOS: analytic depth haze (numpy+cv2 apply; depth GENERATION
+                 # stays dev-repo-only — torch env + vendored DA-V2; the app degrades
+                 # with a clear message, or SEED_ATMOS_ONESHOT points at a checkout)
+                 "seed_atmos.py", "seed_atmos_gui.py", "mirkifier.py",
                  "seed_studio.py", "seed_player.py", "auto_prompt.py", "seg_figure.py",
                  # SEED BRIDGE console (seed_console.py) — main.py's own home screen since
                  # 2026-07-05 (promoted from a personal-only build once tested and approved;

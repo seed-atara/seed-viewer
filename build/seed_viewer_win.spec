@@ -54,6 +54,10 @@ a = Analysis(
         # SEED LENS station (05) — launched via importlib from seed_console like the rest
         "seed_viewer.seed_lens_gui", "seed_lens_gui",
         "seed_viewer.seed_lens", "seed_lens",
+        # SEED ATMOS station (06) — same importlib pattern; mirkifier is its physics core
+        "seed_viewer.seed_atmos_gui", "seed_atmos_gui",
+        "seed_viewer.seed_atmos", "seed_atmos",
+        "seed_viewer.mirkifier", "mirkifier",
         # seed_console.py's Settings gear reaches back into main.py for SettingsDialog —
         # being the literal PyInstaller entry-point script does NOT make a module
         # separately importable by its dotted name from other bundled code; verified by
