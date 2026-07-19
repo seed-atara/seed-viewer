@@ -935,11 +935,18 @@ class _ThumbLabel(QLabel):
         self.scrub_frac = None      # 0..1 while hover-scrubbing
         self.code_text = ""
         self.badge = ""             # "DLV" | "OMT" | ""
+        self.selected = False       # current shot — bright frame so you always know
 
     def paintEvent(self, ev):
         super().paintEvent(ev)
         w, h = self.width(), self.height()
         p = QPainter(self)
+        if self.selected:
+            # the working shot: unmistakable amber frame + inner keyline
+            p.setPen(QPen(QColor(C_AMBER), 3))
+            p.drawRect(1, 1, w - 3, h - 3)
+            p.setPen(QPen(QColor(0, 0, 0, 160), 1))
+            p.drawRect(3, 3, w - 7, h - 7)
         # bottom scrim so the overlaid text always reads
         g = QLinearGradient(0, h - 26, 0, h)
         g.setColorAt(0.0, QColor(0, 0, 0, 0))
@@ -1031,6 +1038,10 @@ class ShotCell(QWidget):
         self.setMouseTracking(True)
 
     # ── data ──
+    def set_current(self, on: bool):
+        self.thumb_lbl.selected = bool(on)
+        self.thumb_lbl.update()
+
     def set_thumbnail(self, pil_img: Image.Image):
         try:
             pix = _pil_to_qpixmap(pil_img)
@@ -1098,6 +1109,7 @@ class ShotBrowser(QWidget):
         self.delivered = delivered
         self._pool     = ThreadPoolExecutor(max_workers=4)
         self._cells: dict[str, ShotCell] = {}
+        self._current_code = ""             # the shot being worked — gets the amber frame
         self._trim_handles = False          # VLC preview: show the cut, not the worked range
 
         layout = QVBoxLayout(self)
@@ -1187,6 +1199,7 @@ class ShotBrowser(QWidget):
         QTimer.singleShot(50, self._refresh)
 
     def select_shot(self, shotcode: str):
+        self._mark_current(shotcode)
         for i in range(self._list.count()):
             item = self._list.item(i)
             w = self._list.itemWidget(item)
@@ -1194,6 +1207,19 @@ class ShotBrowser(QWidget):
                 self._list.setCurrentItem(item)
                 self._list.scrollToItem(item)
                 return
+
+    def _mark_current(self, shotcode: str):
+        """Amber frame on the working shot — survives refreshes and layer swaps."""
+        prev = self._cells.get(self._current_code)
+        if prev is not None:
+            try:
+                prev.set_current(False)
+            except RuntimeError:
+                pass                      # cell was rebuilt underneath us
+        self._current_code = shotcode
+        cur = self._cells.get(shotcode)
+        if cur is not None:
+            cur.set_current(True)
 
     def current_layer_key(self) -> str:
         label = self._layer_cb.currentText()
@@ -1240,6 +1266,7 @@ class ShotBrowser(QWidget):
     def _on_item_click(self, item: QListWidgetItem):
         w = self._list.itemWidget(item)
         if w and hasattr(w, "_shotcode") and not w._is_omit:
+            self._mark_current(w._shotcode)
             self.shot_selected.emit(w._shotcode)
 
     # ── VLC editorial preview ──────────────────────────────────────────────────
@@ -1358,6 +1385,8 @@ class ShotBrowser(QWidget):
             if not is_omit:
                 self._pool.submit(self._load_async, cell, sc, layer)
 
+        if self._current_code in self._cells:      # keep the amber frame across refreshes
+            self._cells[self._current_code].set_current(True)
         self._status_lbl.setText(f"{len(shots)} shots")
 
     def _load_async(self, cell: ShotCell, shotcode: str, layer: str):
@@ -2350,6 +2379,7 @@ class ContentPanel(QWidget):
     deliver_clicked  = Signal()
     beeble_clicked   = Signal()
     magnific_clicked = Signal()
+    filmlook_toggled = Signal(bool)  # preview the show look on the current frame
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -2400,9 +2430,13 @@ class ContentPanel(QWidget):
         si.add_widget(self._seq_lbl)
         si.add_widget(self._range_lbl)
         si.add_widget(self._status_lbl_info)
-        self._fb_text = QPlainTextEdit()
+        from PySide6.QtWidgets import QTextEdit as _QTE
+        self._fb_text = _QTE()
         self._fb_text.setReadOnly(True)
-        self._fb_text.setMaximumHeight(88)
+        self._fb_text.setMaximumHeight(170)
+        self._fb_text.setStyleSheet(
+            f"QTextEdit {{ background: {C_BAR2}; border: 1px solid {C_DIM2}; "
+            f"border-radius: 3px; padding: 4px; }}")
         si.add_widget(self._fb_text)
         lay.addWidget(si)
 
@@ -2455,6 +2489,17 @@ class ContentPanel(QWidget):
         gear_btn.setToolTip("Grade settings")
         grade_lay.addWidget(gear_btn)
         gr.add_widget(grade_row)
+        self._filmlook_btn = QPushButton("◈  FILM LOOK — SATOSHI")
+        self._filmlook_btn.setCheckable(True)
+        self._filmlook_btn.setToolTip(
+            "Preview the show film look (Cinematicify · SATOSHI match) on the "
+            "current frame.\nDisplay only — never baked into any file.")
+        self._filmlook_btn.setStyleSheet(
+            f"QPushButton {{ text-align: left; padding: 5px 10px; }}"
+            f"QPushButton:checked {{ background: {C_AMBER2}; color: {C_AMBER}; "
+            f"border: 1px solid {C_AMBER}; font-weight: 700; }}")
+        self._filmlook_btn.toggled.connect(self.filmlook_toggled.emit)
+        gr.add_widget(self._filmlook_btn)
         self._grade_lbl = _dim_lbl("")
         self._grade_lbl.setWordWrap(True)
         gr.add_widget(self._grade_lbl)
@@ -2522,8 +2567,38 @@ class ContentPanel(QWidget):
         self.reload_comments()
 
     def update_feedback(self, text: str):
-        self._fb_text.setPlainText(text)
+        self._fb_text.setHtml(self._brief_html(text))
         self._fb_text.verticalScrollBar().setValue(0)
+
+    @staticmethod
+    def _brief_html(text: str) -> str:
+        """Typeset the shot brief: title line, amber section headers for ALL-CAPS
+        lines, dim-key/bright-value pairs, breathing room everywhere. The brief
+        is the first thing an artist reads on a shot — it should invite reading."""
+        import html as _h
+        import re as _re
+        lines = [ln.rstrip() for ln in (text or "").splitlines()]
+        out, first_done = [], False
+        for ln in lines:
+            if not ln.strip():
+                continue
+            esc = _h.escape(ln.strip())
+            if not first_done:
+                out.append(f"<div style='color:{C_FG}; font-size:10pt; font-weight:700; "
+                           f"margin:2px 0 8px 0; letter-spacing:0.5px;'>{esc}</div>")
+                first_done = True
+            elif _re.fullmatch(r"[A-Z0-9][A-Z0-9 /&_\-·:]{3,}", ln.strip()):
+                out.append(f"<div style='color:{C_AMBER}; font-size:8pt; font-weight:700; "
+                           f"letter-spacing:2px; margin:10px 0 4px 0;'>{esc}</div>")
+            elif ":" in ln and len(ln.split(":", 1)[0]) <= 24:
+                k, v = (_h.escape(p.strip()) for p in ln.split(":", 1))
+                out.append(f"<div style='margin:0 0 4px 0; font-size:9pt;'>"
+                           f"<span style='color:{C_DIM};'>{k}</span>&nbsp;&nbsp;"
+                           f"<span style='color:{C_FG};'>{v}</span></div>")
+            else:
+                out.append(f"<div style='color:{C_FG}; font-size:9pt; "
+                           f"margin:0 0 5px 0;'>{esc}</div>")
+        return "<div style='padding:2px;'>" + "".join(out) + "</div>"
 
     def reload_comments(self):
         """Fetch the shot's comments OFF the GUI thread and render as bubbles.
@@ -2559,21 +2634,43 @@ class ContentPanel(QWidget):
             self._comment_count.setText(str(len(notes)))
             self._comment_count.setVisible(bool(notes))
             if notes:
+                kind_accent = {"blocker": C_RED, "feedback": C_AMBER, "client": C_AMBER}
                 rows = []
                 for n in notes:
                     who = _html.escape((n.get("author") or "?").upper())
                     kind = (n.get("kind") or "note").lower()
+                    accent = kind_accent.get(kind, C_CYAN)
                     tag = ("" if kind == "note" else
-                           f"&nbsp;<span style='color:{C_AMBER}; font-size:8pt;'>· {kind.upper()}</span>")
-                    body = _html.escape(n.get("body", "")).replace("\n", "<br/>")
+                           f"&nbsp;&nbsp;<span style='color:{accent}; font-size:7.5pt; "
+                           f"font-weight:700; letter-spacing:1px;'>{kind.upper()}</span>")
+                    when = ""
+                    ts = str(n.get("created_at") or "")
+                    if len(ts) >= 16:                      # ISO → "19 Jul · 11:26"
+                        try:
+                            from datetime import datetime as _dt
+                            d = _dt.fromisoformat(ts.replace("Z", "+00:00"))
+                            when = d.strftime("%d %b · %H:%M")
+                        except Exception:
+                            when = ts[:16].replace("T", " · ")
+                    paras = "".join(
+                        f"<div style='margin:0 0 5px 0;'>{_html.escape(p)}</div>"
+                        for p in n.get("body", "").split("\n") if p.strip()) or "<div></div>"
                     rows.append(
-                        f"<table width='100%' cellspacing='0' cellpadding='7'>"
-                        f"<tr><td bgcolor='{C_BTN}'>"
-                        f"<span style='color:{C_CYAN}; font-weight:bold;'>{who}</span>{tag}"
-                        f"<br/><span style='color:{C_FG};'>{body}</span>"
+                        f"<table width='100%' cellspacing='0' cellpadding='0'>"
+                        f"<tr><td width='3' bgcolor='{accent}'></td>"
+                        f"<td bgcolor='{C_BTN}' style='padding:9px 11px;'>"
+                        f"<table width='100%' cellspacing='0' cellpadding='0'><tr>"
+                        f"<td><span style='color:{accent}; font-weight:700; "
+                        f"font-size:8.5pt; letter-spacing:1px;'>{who}</span>{tag}</td>"
+                        f"<td align='right'><span style='color:{C_DIM}; "
+                        f"font-size:7.5pt;'>{when}</span></td>"
+                        f"</tr></table>"
+                        f"<div style='color:{C_FG}; font-size:9.5pt; margin-top:5px;'>"
+                        f"{paras}</div>"
                         f"</td></tr></table>")
+                gap = "<p style='font-size:5pt; margin:0;'>&nbsp;</p>"
                 self._comments_view.setHtml(
-                    "<div style='font-size:9pt;'>" + "<p style='font-size:2pt;'></p>".join(rows) + "</div>")
+                    "<div style='font-size:9pt;'>" + gap.join(rows) + "</div>")
                 sb = self._comments_view.verticalScrollBar()
                 sb.setValue(sb.maximum())        # newest at the bottom, like chat
             else:
@@ -2896,6 +2993,7 @@ class ShotViewerApp(QMainWindow):
         self._content.ver_a_changed.connect(lambda i: self._on_ver_change("a", i))
         self._content.ver_b_changed.connect(lambda i: self._on_ver_change("b", i))
         self._content.deliver_clicked.connect(self._open_deliver_dialog)
+        self._content.filmlook_toggled.connect(self._on_filmlook_toggle)
         self._content.beeble_clicked.connect(self._beeble_current)
         self._content.magnific_clicked.connect(self._magnific_current)
         self._splitter.addWidget(cwrap)
@@ -3273,15 +3371,54 @@ class ShotViewerApp(QMainWindow):
 
     def _apply_grade(self, img: Image.Image, side: str) -> Image.Image:
         e, g, s = self._exposure[side], self._gamma[side], self._saturation[side]
-        if e == 0.0 and g == 1.0 and s == 1.0:
-            return img
         if e != 0.0:
             img = ImageEnhance.Brightness(img).enhance(2.0 ** e)
         if g != 1.0:
             img = img.point(lambda x: int(min(255, max(0, 255 * (x/255) ** (1.0/g)))))
         if s != 1.0:
             img = ImageEnhance.Color(img).enhance(s)
+        if getattr(self, "_filmlook_on", False) and not self.wipe._playing:
+            img = self._filmlook_process(img)
         return img
+
+    def _on_filmlook_toggle(self, on: bool):
+        """Display-only show-look preview (canon: look is a VIEW transform here —
+        baking happens in the finishing pipeline, never in the viewer)."""
+        self._filmlook_on = bool(on)
+        if not hasattr(self, "_filmlook_cache"):
+            self._filmlook_cache = {}
+        self._filmlook_cache.clear()
+        self.wipe._render()
+        self._set_status(f"Film look preview {'ON — display only, not baked' if on else 'off'}")
+
+    def _filmlook_process(self, img: Image.Image) -> Image.Image:
+        """Cinematicify (SATOSHI show match) on a display-res frame, cached by
+        content hash so wipe drags and repaints don't re-run the look."""
+        try:
+            import hashlib
+            key = hashlib.md5(img.tobytes()).hexdigest()
+            cache = getattr(self, "_filmlook_cache", None)
+            if cache is None:
+                cache = self._filmlook_cache = {}
+            hit = cache.get(key)
+            if hit is not None:
+                return hit
+            import numpy as np
+            import cine_cam
+            from seed_image_edit import PRESETS as _LOOKS
+            cfg = dict(cine_cam.DEFAULTS)
+            cfg.update(_LOOKS.get("SATOSHI / Josh (show match)", {}))
+            arr = np.asarray(img.convert("RGB"), dtype=np.float32) / 255.0
+            out = cine_cam.render_array(arr, None, cfg, preview=True)
+            res = Image.fromarray(
+                (np.clip(out, 0, 1) * 255).astype("uint8"), "RGB")
+            if len(cache) > 12:
+                cache.clear()
+            cache[key] = res
+            return res
+        except Exception as e:
+            _dbg(f"filmlook preview failed: {e!r}")
+            return img
 
     def _grade_changed(self, sides=("a","b")):
         # Grade is applied in WipeView._process (every render path), so we only
