@@ -212,6 +212,8 @@ _MODULE_TOOLS = ["seed_theme.py", "seed_pip.py", "seed_image_edit.py", "cine_cam
                  # stays dev-repo-only — torch env + vendored DA-V2; the app degrades
                  # with a clear message, or SEED_ATMOS_ONESHOT points at a checkout)
                  "seed_atmos.py", "seed_atmos_gui.py", "mirkifier.py",
+                 # Prompt Co-Pilot (Claude inside Generate — stdlib core, PIP's key)
+                 "prompt_copilot.py",
                  "seed_studio.py", "seed_player.py", "auto_prompt.py", "seg_figure.py",
                  # SEED BRIDGE console (seed_console.py) — main.py's own home screen since
                  # 2026-07-05 (promoted from a personal-only build once tested and approved;

@@ -58,6 +58,7 @@ a = Analysis(
         "seed_viewer.seed_atmos_gui", "seed_atmos_gui",
         "seed_viewer.seed_atmos", "seed_atmos",
         "seed_viewer.mirkifier", "mirkifier",
+        "seed_viewer.prompt_copilot", "prompt_copilot",
         # seed_console.py's Settings gear reaches back into main.py for SettingsDialog —
         # being the literal PyInstaller entry-point script does NOT make a module
         # separately importable by its dotted name from other bundled code; verified by

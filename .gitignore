@@ -74,3 +74,4 @@ seed_viewer/seed_studio_v14.py
 seed_viewer/seed_pip_v14.py
 seed_viewer/artist_hub_v14.py
 seed_viewer/project_registry.py
+seed_viewer/prompt_copilot.py
