@@ -32,6 +32,13 @@ a = Analysis(
         (str(SV / "agents.json"),    "seed_viewer"),
         # local figure-segmentation model (u2netp, 4.7MB) -> _MEIPASS/u2netp.onnx
         *( [(str(SV / "u2netp.onnx"), ".")] if (SV / "u2netp.onnx").exists() else [] ),
+        # SEED ATMOS depth generator — DATA files (run by the external torch python,
+        # never imported by the frozen app). Land in _internal/ where seed_atmos.REPO
+        # resolves the default depth one-shot path. Fixes "depth one-shot script missing".
+        *( [(str(SV / "_depth_oneshot.py"), ".")] if (SV / "_depth_oneshot.py").exists() else [] ),
+        *( [(str(SV / "depth_shot.py"), ".")] if (SV / "depth_shot.py").exists() else [] ),
+        *( [(str(SV / "vendor" / "depth_anything_v2"), "vendor/depth_anything_v2")]
+           if (SV / "vendor" / "depth_anything_v2").exists() else [] ),
     ],
     hiddenimports=[
         "PySide6.QtCore",

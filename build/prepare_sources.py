@@ -238,13 +238,23 @@ _BEEBLE_BACKEND = ["beeble_client.py", "seed_beeble_key.py"]
 # Without this copy the frozen app ships keyless and PIP only works via env/env-file.
 _PIP_BACKEND = ["seed_anthropic_key.py"]
 
+# SEED ATMOS depth generator — _depth_oneshot.py + depth_shot.py run in the
+# user's EXTERNAL torch python (subprocess), NOT the frozen app, so they ship as
+# DATA files on disk (spec datas -> _internal/), NOT as importable modules. They
+# need the vendored DepthAnything-V2 (Apache-2.0) package beside them. Without
+# these the frozen app raised "depth one-shot script missing" and Atmos depth
+# was dev-repo-only. depth_shot imports pipeline_paths lazily so the one-shot
+# path is self-contained. Copied here; the spec adds them to datas.
+_DEPTH_ONESHOT = ["_depth_oneshot.py", "depth_shot.py"]
+
 
 def _copy_pipeline(source_repo: Path, dry_run: bool) -> None:
     """Bundle the Artist Hub panel + its backend into seed_viewer/ (gitignored)."""
     jobs = [(source_repo / _PIPELINE_PANEL, SV_PKG / "pipeline_panel.py")]
     jobs += [(source_repo / m, SV_PKG / m)
              for m in _PIPELINE_BACKEND + _PIPELINE_DATA + _CLI_TOOLS + _MODULE_TOOLS
-             + _DELIVERY_BACKEND + _GEN_BACKEND + _BEEBLE_BACKEND + _PIP_BACKEND]
+             + _DELIVERY_BACKEND + _GEN_BACKEND + _BEEBLE_BACKEND + _PIP_BACKEND
+             + _DEPTH_ONESHOT]
     for src, dst in jobs:
         if not src.exists():
             print(f"  WARN: {src.name} not found — skip (artist hub may not load)")
@@ -254,6 +264,18 @@ def _copy_pipeline(source_repo: Path, dry_run: bool) -> None:
         else:
             shutil.copy2(src, dst)
             print(f"  OK : {src.name} -> seed_viewer/{dst.name}")
+    # Vendored DepthAnything-V2 (Apache-2.0) — needed on disk beside _depth_oneshot.py
+    # for the external torch python. Copied to seed_viewer/vendor/depth_anything_v2/;
+    # the spec ships it to _internal/vendor/depth_anything_v2/.
+    vsrc = source_repo / "vendor" / "depth_anything_v2"
+    if vsrc.exists() and not dry_run:
+        vdst = SV_PKG / "vendor" / "depth_anything_v2"
+        if vdst.exists():
+            shutil.rmtree(vdst)
+        shutil.copytree(vsrc, vdst, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+        print(f"  OK : vendor/depth_anything_v2 -> seed_viewer/vendor/depth_anything_v2")
+    elif not vsrc.exists():
+        print("  WARN: vendor/depth_anything_v2 not found — Atmos depth will be unavailable")
     # ComfyUI workflow templates (optional, for the tools)
     wf_src = source_repo / "comfy_workflows"
     if wf_src.exists() and not dry_run:
